@@ -34,6 +34,7 @@ int skynet_sendname(struct skynet_context * context, uint32_t source, const char
 
 int skynet_isremote(struct skynet_context *, uint32_t handle, int * harbor);
 
+// callback返回0表明系统在回调完成之后会free这个msg
 typedef int (*skynet_cb)(struct skynet_context * context, void *ud, int type, int session, uint32_t source , const void * msg, size_t sz);
 void skynet_callback(struct skynet_context * context, void *ud, skynet_cb cb);
 
@@ -42,3 +43,6 @@ uint64_t skynet_now(void);
 void skynet_debug_memory(const char *info);	// for debug use, output current service memory to stderr
 
 #endif
+
+// type 表示的是当前消息包的协议组别
+// session可以认为是一次会话(rpc)的id,通常发起方会分配一个新的session id，应答的时候使用这个老的id

@@ -46,9 +46,9 @@ struct skynet_context {
 	skynet_cb cb;
 	struct message_queue *queue;
 	FILE * logfile;
-	char result[32];
+	char result[32];	// 用于临时存cmd的返回字符串
 	uint32_t handle;
-	int session_id;
+	int session_id;		// session id gen
 	int ref;
 	bool init;
 	bool endless;
@@ -57,10 +57,10 @@ struct skynet_context {
 };
 
 struct skynet_node {
-	int total;
-	int init;
-	uint32_t monitor_exit;
-	pthread_key_t handle_key;
+	int total;						// context count
+	int init;						// 标记，表明handle_key是否有效
+	uint32_t monitor_exit;			// 监控者(全局监控service退出)的handle
+	pthread_key_t handle_key;		// 对于work线程它是context handle，对于main,socket,etc它是线程相关的标识value
 };
 
 static struct skynet_node G_NODE;
@@ -170,6 +170,7 @@ skynet_context_new(const char * name, const char *param) {
 	}
 }
 
+// 此函数目前只有在ctx服务中调用，不用考虑多线程
 int
 skynet_context_newsession(struct skynet_context *ctx) {
 	// session always be a positive number
@@ -284,12 +285,18 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL) {
-		struct drop_t d = { handle };
+		// message_queue统一在此删除
+		// 之所以不在删除ctx的时候删除相应的message_queue是因为message_queue有时候
+		// 还被global_queue引用，所以在删除ctx的时候(skynet_context_release)标记一
+		// 下，此处message_queue已经从global中剥离出来了，可以正确执行删除的后续步骤了
+		// http://blog.codingnow.com/2012/08/skynet_bug.html
+		struct drop_t d = {handle};
 		skynet_mq_release(q, drop_message, &d);
 		return skynet_globalmq_pop();
 	}
-
-	int i,n=1;
+	
+	// 再从次级队列中取去一条消息
+	int i, n = 1;
 	struct skynet_message msg;
 
 	for (i=0;i<n;i++) {
@@ -360,7 +367,7 @@ handle_exit(struct skynet_context * context, uint32_t handle) {
 	} else {
 		skynet_error(context, "KILL :%0x", handle);
 	}
-	if (G_NODE.monitor_exit) {
+	if (G_NODE.monitor_exit) { // 如果有服务监控service退出，则向其发送消息
 		skynet_send(context,  handle, G_NODE.monitor_exit, PTYPE_CLIENT, 0, NULL, 0);
 	}
 	skynet_handle_retire(handle);
@@ -383,6 +390,7 @@ cmd_timeout(struct skynet_context * context, const char * param) {
 	return context->result;
 }
 
+// 注册一个本地服务名.xxxx，如果传入的.xxxx为NULL则返回16进制的字符串返回
 static const char *
 cmd_reg(struct skynet_context * context, const char * param) {
 	if (param == NULL || param[0] == '\0') {
@@ -464,8 +472,8 @@ cmd_launch(struct skynet_context * context, const char * param) {
 	char tmp[sz+1];
 	strcpy(tmp,param);
 	char * args = tmp;
-	char * mod = strsep(&args, " \t\r\n");
-	args = strsep(&args, "\r\n");
+	char * mod = strsep(&args, " \t\r\n");	// 比如"snlua"，"harbor"
+	args = strsep(&args, "\r\n");	// 比如"launcher", harbor_id,
 	struct skynet_context * inst = skynet_context_new(mod,args);
 	if (inst == NULL) {
 		return NULL;
@@ -515,12 +523,14 @@ cmd_endless(struct skynet_context * context, const char * param) {
 	return NULL;
 }
 
+//  ABORT 指令可以杀掉全部活着的服务
 static const char *
 cmd_abort(struct skynet_context * context, const char * param) {
 	skynet_handle_retireall();
 	return NULL;
 }
 
+// 某个service 监控 any service退出事件
 static const char *
 cmd_monitor(struct skynet_context * context, const char * param) {
 	uint32_t handle=0;
@@ -662,6 +672,9 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 	*sz |= (size_t)type << MESSAGE_TYPE_SHIFT;
 }
 
+// 默认情况下data在send的时候会在skyent_send中被copy一份，外界调用send之后即可释放原data(可申请为栈内存，这样可以不用手动释放)，copy的这份在回调结束会由系统自动释放(回调返回0)
+// DONTCOPY模式下，data不会被copy，外界调用send之后不能释放data，交由系统在回调结束来自动释放(回调返回0)
+// context是发送方的，只能是所在服务的ctx
 int
 skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * data, size_t sz) {
 	if ((sz & MESSAGE_TYPE_MASK) != sz) {
@@ -678,10 +691,10 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 	}
 
 	if (destination == 0) {
-		return session;
+		return session;	// 仅仅是分配ssion id用，见_genid
 	}
 	if (skynet_harbor_message_isremote(destination)) {
-		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
+		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg)); // service_harbor 发送远程消息后删除
 		rmsg->destination.handle = destination;
 		rmsg->message = data;
 		rmsg->sz = sz;

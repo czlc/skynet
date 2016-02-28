@@ -80,7 +80,7 @@ local function redis_login(auth, db)
 end
 
 function redis.connect(db_conf)
-	local channel = socketchannel.channel {
+	local channel = socketchannel.channel { -- 创建一个channel对象
 		host = db_conf.host,
 		port = db_conf.port or 6379,
 		auth = redis_login(db_conf.auth, db_conf.db),
@@ -123,6 +123,7 @@ local count_cache = make_cache(function(t,k)
 		return s
 	end)
 
+-- cmd 比如DEL ，msg 是value
 local function compose_message(cmd, msg)
 	local t = type(msg)
 	local lines = {}
@@ -150,11 +151,12 @@ local function compose_message(cmd, msg)
 	return lines
 end
 
+-- redis channel从command派生，command包括以下方法(disconnect, exists(key), sismember(key, value))
 setmetatable(command, { __index = function(t,k)
 	local cmd = string.upper(k)
 	local f = function (self, v, ...)
 		if type(v) == "table" then
-			return self[1]:request(compose_message(cmd, v), read_response)
+			return self[1]:request(compose_message(cmd, v), read_response) -- self[1]为channel对象
 		else
 			return self[1]:request(compose_message(cmd, {v, ...}), read_response)
 		end

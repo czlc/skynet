@@ -24,7 +24,7 @@ local function update(db, key, value, ...)
 	if select("#",...) == 0 then
 		local ret = db[key]
 		db[key] = value
-		return ret, value
+		return ret, value	-- old,new
 	else
 		if db[key] == nil then
 			db[key] = {}
@@ -42,7 +42,7 @@ local function wakeup(db, key1, ...)
 		return
 	end
 	if q[mode] == "queue" then
-		db[key1] = nil
+		db[key1] = nil	-- 找到了从wait_queue中拿出去
 		if select("#", ...) ~= 1 then
 			-- throw error because can't wake up a branch
 			for _,response in ipairs(q) do
@@ -59,7 +59,7 @@ end
 
 function command.UPDATE(...)
 	local ret, value = update(database, ...)
-	if ret or value == nil then
+	if ret or value == nil then  -- ret表明之前有值，没有因此阻塞的，value == nil表明没有设置有效的值，也不用唤醒等待的协程
 		return ret
 	end
 	local q = wakeup(wait_queue, ...)
@@ -100,7 +100,7 @@ skynet.start(function()
 			if ret then
 				skynet.ret(skynet.pack(ret))
 			else
-				waitfor(wait_queue, ...)
+				waitfor(wait_queue, ...) -- 没有查到，等待结果
 			end
 		else
 			local f = assert(command[cmd])

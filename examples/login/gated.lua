@@ -1,3 +1,4 @@
+-- 相当于watchdog
 local msgserver = require "snax.msgserver"
 local crypt = require "crypt"
 local skynet = require "skynet"
@@ -11,6 +12,7 @@ local internal_id = 0
 
 -- login server disallow multi login, so login_handler never be reentry
 -- call by login server
+-- login step 7:G1 收到 step 6 的请求后，进行 C 登陆的准备工作（通常是加载数据等），记录 secret ，并由 G1 分配一个 subid 返回给 L。通常 subid 对于一个 userid 是唯一不重复的
 function server.login_handler(uid, secret)
 	if users[uid] then
 		error(string.format("%s is already login", uid))

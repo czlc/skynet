@@ -1,3 +1,4 @@
+-- 组网工作由cmaster和cslave完成
 local skynet = require "skynet"
 local socket = require "socket"
 
@@ -25,11 +26,11 @@ local socket = require "socket"
 			'D' : DISCONNECT slave_id
 ]]
 
-local slave_node = {}
-local global_name = {}
+local slave_node = {}  -- 连接上来的slave [slave_id] -> {fd, id, addr}
+local global_name = {}	-- slave的全局名字 [globalname] -> addr
 
 local function read_package(fd)
-	local sz = socket.read(fd, 1)
+	local sz = socket.read(fd, 1)	-- package size 1 byte
 	assert(sz, "closed")
 	sz = string.byte(sz)
 	local content = assert(socket.read(fd, sz), "closed")
@@ -43,18 +44,22 @@ local function pack_package(...)
 	return string.char(size) .. message
 end
 
+-- 通知所有的slave有新的slave接入
 local function report_slave(fd, slave_id, slave_addr)
 	local message = pack_package("C", slave_id, slave_addr)
 	local n = 0
+	-- step2:通知所有已接的slave有新的slave连接
 	for k,v in pairs(slave_node) do
 		if v.fd ~= 0 then
 			socket.write(v.fd, message)
 			n = n + 1
 		end
 	end
+	-- step3:通知新的slave需要等待n个其它slave的连接
 	socket.write(fd, pack_package("W", n))
 end
 
+-- 和某个slave握手
 local function handshake(fd)
 	local t, slave_id, slave_addr = read_package(fd)
 	assert(t=='H', "Invalid handshake type " .. t)
@@ -71,6 +76,7 @@ local function handshake(fd)
 	return slave_id , slave_addr
 end
 
+-- 处理某个slave发来的消息
 local function dispatch_slave(fd)
 	local t, name, address = read_package(fd)
 	if t == 'R' then
@@ -80,7 +86,7 @@ local function dispatch_slave(fd)
 			global_name[name] = address
 		end
 		local message = pack_package("N", name, address)
-		for k,v in pairs(slave_node) do
+		for k,v in pairs(slave_node) do	-- 同步 给所有的slave
 			socket.write(v.fd, message)
 		end
 	elseif t == 'Q' then
@@ -94,6 +100,7 @@ local function dispatch_slave(fd)
 	end
 end
 
+-- 监控某个slave发来的消息
 local function monitor_slave(slave_id, slave_address)
 	local fd = slave_node[slave_id].fd
 	skynet.error(string.format("Harbor %d (fd=%d) report %s", slave_id, fd, slave_address))
@@ -114,6 +121,7 @@ skynet.start(function()
 	socket.start(fd , function(id, addr)
 		skynet.error("connect from " .. addr .. " " .. id)
 		socket.start(id)
+		-- step1:处理slave发来的握手协议
 		local ok, slave, slave_addr = pcall(handshake, id)
 		if ok then
 			skynet.fork(monitor_slave, slave, slave_addr)

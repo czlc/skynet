@@ -30,7 +30,7 @@
 #define TYPE_TABLE 6
 
 #define MAX_COOKIE 32
-#define COMBINE_TYPE(t,v) ((t) | (v) << 3)
+#define COMBINE_TYPE(t,v) ((t) | (v) << 3)	// << 最低3位用来存t，其余高位用于存v
 
 #define BLOCK_SIZE 128
 #define MAX_DEPTH 32
@@ -40,15 +40,16 @@ struct block {
 	char buffer[BLOCK_SIZE];
 };
 
+// block write 链表
 struct write_block {
-	struct block * head;
-	struct block * current;
-	int len;
-	int ptr;
+	struct block * head;	// block 链表头
+	struct block * current;	// 当前block，也可以说是链表尾
+	int len;				// block 链表中所有节点数据总长度
+	int ptr;				// 当前block已经使用的字节数
 };
 
 struct read_block {
-	char * buffer;
+	char * buffer;			// 输入缓冲，将要从中读出
 	int len;
 	int ptr;
 };
@@ -60,21 +61,24 @@ blk_alloc(void) {
 	return b;
 }
 
+// 压入一块内存到write_block链表中去，当前结点存不下就新加结点
+// 格式为：4字节总长度 + type1 + data1 + type2 + data2 ....
 inline static void
 wb_push(struct write_block *b, const void *buf, int sz) {
 	const char * buffer = buf;
-	if (b->ptr == BLOCK_SIZE) {
+	if (b->ptr == BLOCK_SIZE) {		// 当前block已经用完
 _again:
+		// 后插
 		b->current = b->current->next = blk_alloc();
 		b->ptr = 0;
 	}
-	if (b->ptr <= BLOCK_SIZE - sz) {
+	if (b->ptr <= BLOCK_SIZE - sz) {  // 当前block可以放下sz大小的buf
 		memcpy(b->current->buffer + b->ptr, buffer, sz);
 		b->ptr+=sz;
 		b->len+=sz;
-	} else {
-		int copy = BLOCK_SIZE - b->ptr;
-		memcpy(b->current->buffer + b->ptr, buffer, copy);
+	} else {  // 当前block无法放下sz大小的buf
+		int copy = BLOCK_SIZE - b->ptr; // 当前block的可用空间
+		memcpy(b->current->buffer + b->ptr, buffer, copy); // 先拷贝部分到可用空间
 		buffer += copy;
 		b->len += copy;
 		sz -= copy;
@@ -137,6 +141,8 @@ wb_boolean(struct write_block *wb, int boolean) {
 	wb_push(wb, &n, 1);
 }
 
+// 1byte (type + 字节数n)
+// nbyte data
 static inline void
 wb_integer(struct write_block *wb, lua_Integer v) {
 	int type = TYPE_NUMBER;
@@ -214,7 +220,7 @@ static void pack_one(lua_State *L, struct write_block *b, int index, int depth);
 
 static int
 wb_table_array(lua_State *L, struct write_block * wb, int index, int depth) {
-	int array_size = lua_rawlen(L,index);
+	int array_size = lua_rawlen(L,index);	// 获得table的长度
 	if (array_size >= MAX_COOKIE-1) {
 		uint8_t n = COMBINE_TYPE(TYPE_TABLE, MAX_COOKIE-1);
 		wb_push(wb, &n, 1);
@@ -247,9 +253,9 @@ wb_table_hash(lua_State *L, struct write_block * wb, int index, int depth, int a
 				}
 			}
 		}
-		pack_one(L,wb,-2,depth);
-		pack_one(L,wb,-1,depth);
-		lua_pop(L, 1);
+		pack_one(L,wb,-2,depth);	// key
+		pack_one(L,wb,-1,depth);	// value
+		lua_pop(L, 1);	/* removes 'value'; keeps 'key' for next iteration */
 	}
 	wb_nil(wb);
 }
@@ -529,6 +535,7 @@ unpack_one(lua_State *L, struct read_block *rb) {
 	push_value(L, rb, type & 0x7, type>>3);
 }
 
+// 把block链表中的内容整合到一起，并生成lightuserdata和长度压入lua堆栈
 static void
 seri(lua_State *L, struct block *b, int len) {
 	uint8_t * buffer = skynet_malloc(len);
@@ -594,14 +601,16 @@ _luaseri_unpack(lua_State *L) {
 	return lua_gettop(L) - 1;
 }
 
+// 把栈上参数读进来序列化成一个buffer，并将其作为lightuserdata压入，另外还压入其size
 int
 _luaseri_pack(lua_State *L) {
-	struct block temp;
+	struct block temp;	// 开在 stack 上,可以节省一次内存分配释放操作
 	temp.next = NULL;
 	struct write_block wb;
 	wb_init(&wb, &temp);
 	pack_from(L,&wb,0);
 	assert(wb.head == &temp);
+	// 把链表合并到一个buffer中来
 	seri(L, &temp, wb.len);
 
 	wb_free(&wb);

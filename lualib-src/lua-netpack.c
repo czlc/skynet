@@ -15,7 +15,7 @@
 #define SMALLSTRING 2048
 
 #define TYPE_DATA 1
-#define TYPE_MORE 2
+#define TYPE_MORE 2	// 说明有>= 1个完整包等待取
 #define TYPE_ERROR 3
 #define TYPE_OPEN 4
 #define TYPE_CLOSE 5
@@ -27,23 +27,24 @@
 
 struct netpack {
 	int id;
-	int size;
-	void * buffer;
+	int size;		// 这个数据包总共需要接收的数据大小
+	void * buffer;	// 用于接收数据的缓存
 };
 
+// 一个hash[key(fd)]下的value元素，因为hash是开链式的，所以它是一个链表的一个节点
 struct uncomplete {
-	struct netpack pack;
-	struct uncomplete * next;
-	int read;
-	int header;
+	struct netpack pack; // 不完整的包
+	struct uncomplete * next;	// 用于hash 开链，保存下一个桶key(fd)节点
+	int read;	// 此fd已经收到数据的size，如果header只来了一个字节，那这个值就是-1
+	int header;	// 如果某次只读到包的第一个字节,整个包的size(2byte)还不够，就把第一个字节存入到header
 };
 
 struct queue {
 	int cap;
 	int head;
 	int tail;
-	struct uncomplete * hash[HASHSIZE];
-	struct netpack queue[QUEUESIZE];
+	struct uncomplete * hash[HASHSIZE];	// hash表，保存尚未接收完数据的缓存，开链试，socket id 经过hash_fd之后的值hash后的值做，一个桶可以对应一个链表
+	struct netpack queue[QUEUESIZE]; // 完整的包
 };
 
 static void
@@ -79,6 +80,8 @@ lclear(lua_State *L) {
 	return 0;
 }
 
+
+// fd hash成一个小于HASHSIZE(4096)的整数
 static inline int
 hash_fd(int fd) {
 	int a = fd >> 24;
@@ -87,6 +90,7 @@ hash_fd(int fd) {
 	return (int)(((uint32_t)(a + b + c)) % HASHSIZE);
 }
 
+// 从hash表中pop这个fd的item
 static struct uncomplete *
 find_uncomplete(struct queue *q, int fd) {
 	if (q == NULL)
@@ -111,6 +115,7 @@ find_uncomplete(struct queue *q, int fd) {
 	return NULL;
 }
 
+// get或者创建一个queue
 static struct queue *
 get_queue(lua_State *L) {
 	struct queue *q = lua_touserdata(L,1);
@@ -145,6 +150,7 @@ expand_queue(lua_State *L, struct queue *q) {
 	lua_replace(L,1);
 }
 
+// 压入一个整包数据到队列
 static void
 push_data(lua_State *L, int fd, void *buffer, int size, int clone) {
 	if (clone) {
@@ -155,7 +161,7 @@ push_data(lua_State *L, int fd, void *buffer, int size, int clone) {
 	struct queue *q = get_queue(L);
 	struct netpack *np = &q->queue[q->tail];
 	if (++q->tail >= q->cap)
-		q->tail -= q->cap;
+		q->tail -= q->cap; // NOTE:liuchang 直接=0不就好了？
 	np->id = fd;
 	np->buffer = buffer;
 	np->size = size;
@@ -164,6 +170,7 @@ push_data(lua_State *L, int fd, void *buffer, int size, int clone) {
 	}
 }
 
+// 为fd的创建一个uncomplete结点，放入hash中
 static struct uncomplete *
 save_uncomplete(lua_State *L, int fd) {
 	struct queue *q = get_queue(L);
@@ -203,6 +210,7 @@ push_more(lua_State *L, int fd, uint8_t *buffer, int size) {
 		memcpy(uc->pack.buffer, buffer, size);
 		return;
 	}
+	// 压入一个整包数据
 	push_data(L, fd, buffer, pack_size, 1);
 
 	buffer += pack_size;
@@ -222,6 +230,7 @@ close_uncomplete(lua_State *L, int fd) {
 	}
 }
 
+// 返回值为压入脚本参数个数+1，因为栈中已经保留了 queue
 static int
 filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 	struct queue *q = lua_touserdata(L,1);
@@ -240,17 +249,19 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 			uc->read = 0;
 		}
 		int need = uc->pack.size - uc->read;
+		// 还是不够一个完整包
 		if (size < need) {
 			memcpy(uc->pack.buffer + uc->read, buffer, size);
 			uc->read += size;
 			int h = hash_fd(fd);
-			uc->next = q->hash[h];
+			uc->next = q->hash[h]; // 搬到前面来
 			q->hash[h] = uc;
 			return 1;
 		}
 		memcpy(uc->pack.buffer + uc->read, buffer, need);
 		buffer += need;
 		size -= need;
+		// 此包的数据到齐了
 		if (size == 0) {
 			lua_pushvalue(L, lua_upvalueindex(TYPE_DATA));
 			lua_pushinteger(L, fd);
@@ -260,22 +271,24 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 			return 5;
 		}
 		// more data
-		push_data(L, fd, uc->pack.buffer, uc->pack.size, 0);
+		push_data(L, fd, uc->pack.buffer, uc->pack.size, 0);	// 先压一个进去再说
 		skynet_free(uc);
 		push_more(L, fd, buffer, size);
-		lua_pushvalue(L, lua_upvalueindex(TYPE_MORE));
+		lua_pushvalue(L, lua_upvalueindex(TYPE_MORE));	// 压入字符串"more"
 		return 2;
 	} else {
+		// 才收到1个字节，包大小都得不到，因为包大小为2个字节
 		if (size == 1) {
 			struct uncomplete * uc = save_uncomplete(L, fd);
 			uc->read = -1;
 			uc->header = *buffer;
 			return 1;
 		}
-		int pack_size = read_size(buffer);
+		int pack_size = read_size(buffer);	// 得到整个包应该是多大
 		buffer+=2;
 		size-=2;
 
+		// 已得到的数据还不足以组成一个完整的包
 		if (size < pack_size) {
 			struct uncomplete * uc = save_uncomplete(L, fd);
 			uc->read = size;
@@ -284,6 +297,7 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 			memcpy(uc->pack.buffer, buffer, size);
 			return 1;
 		}
+		// 接收到的数据刚好是一个整包的
 		if (size == pack_size) {
 			// just one package
 			lua_pushvalue(L, lua_upvalueindex(TYPE_DATA));
@@ -299,7 +313,7 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 		buffer += pack_size;
 		size -= pack_size;
 		push_more(L, fd, buffer, size);
-		lua_pushvalue(L, lua_upvalueindex(TYPE_MORE));
+		lua_pushvalue(L, lua_upvalueindex(TYPE_MORE));	// 压入字符串"more"
 		return 2;
 	}
 }
@@ -337,20 +351,20 @@ lfilter(lua_State *L) {
 	struct skynet_socket_message *message = lua_touserdata(L,2);
 	int size = luaL_checkinteger(L,3);
 	char * buffer = message->buffer;
-	if (buffer == NULL) {
+	if (buffer == NULL) {	// padding string data
 		buffer = (char *)(message+1);
 		size -= sizeof(*message);
 	} else {
 		size = -1;
 	}
 
-	lua_settop(L, 1);
+	lua_settop(L, 1);	// 保留queue
 
 	switch(message->type) {
 	case SKYNET_SOCKET_TYPE_DATA:
 		// ignore listen id (message->id)
 		assert(size == -1);	// never padding string
-		return filter_data(L, message->id, (uint8_t *)buffer, message->ud);
+		return filter_data(L, message->id, (uint8_t *)buffer, message->ud); // ud is size of data
 	case SKYNET_SOCKET_TYPE_CONNECT:
 		// ignore listen fd connect
 		return 1;
@@ -363,7 +377,7 @@ lfilter(lua_State *L) {
 	case SKYNET_SOCKET_TYPE_ACCEPT:
 		lua_pushvalue(L, lua_upvalueindex(TYPE_OPEN));
 		// ignore listen id (message->id);
-		lua_pushinteger(L, message->ud);
+		lua_pushinteger(L, message->ud);	// ud is listen id
 		pushstring(L, buffer, size);
 		return 4;
 	case SKYNET_SOCKET_TYPE_ERROR:

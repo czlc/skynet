@@ -5,9 +5,9 @@ local datacenter = require "datacenter"
 local harbor_id = skynet.harbor(skynet.self())
 
 local command = {}
-local channel = {}
-local channel_n = {}
-local channel_remote = {}
+local channel = {} -- channel[id][source] = true,其中source为关注此channel的服务
+local channel_n = {} -- channel_n[id] = count，其中count为关注此channel的用户数量，用于引用计数
+local channel_remote = {} -- channel_remote[id][harbor] = true，其中harbor为远程harborid
 local channel_id = harbor_id
 local NORET = {}
 
@@ -103,7 +103,7 @@ skynet.register_protocol {
 -- publish a message, if the caller is remote, forward the message to the owner node (by remote_publish)
 -- If the caller is local, call publish
 function command.PUB(source, c, pack, size)
-	assert(skynet.harbor(source) == harbor_id)
+	assert(skynet.harbor(source) == harbor_id) -- 只能本地节点调用
 	local node = c % 256
 	if node ~= harbor_id then
 		-- remote publish
@@ -136,9 +136,10 @@ end
 -- If the channel is remote, node subscribe it by send a SUBR to the owner .
 function command.SUB(source, c)
 	local node = c % 256
-	if node ~= harbor_id then
+	if node ~= harbor_id then -- 关注一个远程的channel
 		-- remote group
 		if channel[c] == nil then
+			-- 对远程来说无论多少次关注和取关，只有第一次关注和最后一次取关有效
 			if skynet.call(node_address[node], "lua", "SUBR", c) then
 				return
 			end
@@ -158,7 +159,7 @@ end
 
 -- MUST call by a node, unsubscribe a channel
 function command.USUBR(source, c)
-	local node = skynet.harbor(source)
+	local node = skynet.harbor(source) -- 获得远程取关的harbor id
 	assert(node ~= harbor_id)
 	local group = assert(channel_remote[c])
 	group[node] = nil
@@ -174,6 +175,7 @@ function command.USUB(source, c)
 		if channel_n[c] == 0 then
 			local node = c % 256
 			if node ~= harbor_id then
+				-- 对远程来说无论多少次关注和取关，只有第一次关注和最后一次取关有效
 				-- remote group
 				channel[c] = nil
 				channel_n[c] = nil

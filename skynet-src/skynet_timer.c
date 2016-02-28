@@ -19,11 +19,11 @@
 typedef void (*timer_execute_func)(void *ud,void *arg);
 
 #define TIME_NEAR_SHIFT 8
-#define TIME_NEAR (1 << TIME_NEAR_SHIFT)
+#define TIME_NEAR (1 << TIME_NEAR_SHIFT)	// 256
 #define TIME_LEVEL_SHIFT 6
-#define TIME_LEVEL (1 << TIME_LEVEL_SHIFT)
-#define TIME_NEAR_MASK (TIME_NEAR-1)
-#define TIME_LEVEL_MASK (TIME_LEVEL-1)
+#define TIME_LEVEL (1 << TIME_LEVEL_SHIFT)	// 64
+#define TIME_NEAR_MASK (TIME_NEAR-1)		// b11111111
+#define TIME_LEVEL_MASK (TIME_LEVEL-1)		// b111111
 
 struct timer_event {
 	uint32_t handle;
@@ -32,7 +32,7 @@ struct timer_event {
 
 struct timer_node {
 	struct timer_node *next;
-	uint32_t expire;
+	uint32_t expire;								// 超时时刻
 };
 
 struct link_list {
@@ -41,14 +41,15 @@ struct link_list {
 };
 
 struct timer {
-	struct link_list near[TIME_NEAR];
-	struct link_list t[4][TIME_LEVEL];
+	struct link_list near[TIME_NEAR];	// 倒计时 类似秒
+	struct link_list t[4][TIME_LEVEL];	// 倒计时 4个level类似 分钟/小时/天/月
 	struct spinlock lock;
-	uint32_t time;
-	uint32_t starttime;
-	uint64_t current;
-	uint64_t current_point;
+	uint32_t time;							// 当前时刻，8bit near + 4 * 6bit level，初始为0，大约497天之后溢出
+	uint32_t starttime;						// system time (s)，通过current溢出累加
+	uint64_t current;						// system time (10ms)，通过时间计数累加
+	uint64_t current_point;					// 当前计数时间 (10ms)，几乎不可能溢出，用于计算每次update的diff
 };
+// current和starttime似乎没有什么用，取得时候再算也行
 
 static struct timer * TI = NULL;
 
@@ -119,10 +120,10 @@ timer_shift(struct timer *T) {
 	if (ct == 0) {
 		move_list(T, 3, 0);
 	} else {
-		uint32_t time = ct >> TIME_NEAR_SHIFT;
+		uint32_t time = ct >> TIME_NEAR_SHIFT;	// 当前刻的分钟+小时+天+月
 		int i=0;
 
-		while ((ct & (mask-1))==0) {
+		while ((ct & (mask-1))==0) {			// 当前时刻的秒回绕，找高一层挂接的定时器，如果高一层也回绕，就找更高一层的(分钟/小时/天/月)
 			int idx=time & TIME_LEVEL_MASK;
 			if (idx!=0) {
 				move_list(T, i, idx);
@@ -205,6 +206,7 @@ timer_create_timer() {
 	return r;
 }
 
+// 添加一个计时器，time为相对时间，单位为10ms
 int
 skynet_timeout(uint32_t handle, int time, int session) {
 	if (time <= 0) {
@@ -243,6 +245,8 @@ systime(uint32_t *sec, uint32_t *cs) {
 #endif
 }
 
+// 64bit不用考虑溢出
+// 此函数应该取系统启动之后流逝的时间
 static uint64_t
 gettime() {
 	uint64_t t;

@@ -123,6 +123,7 @@ function server.ip(username)
 	end
 end
 
+-- conf为gated.lua
 function server.start(conf)
 	local expired_number = conf.expired_number or 128
 
@@ -139,6 +140,7 @@ function server.start(conf)
 		return f(...)
 	end
 
+	-- 如果你希望在监听端口打开的时候，做一些初始化操作，可以提供 open 这个方法。source 是请求来源地址，conf 是开启 gate 服务的参数表。
 	function handler.open(source, gateconf)
 		local servername = assert(gateconf.servername)
 		return conf.register_handler(servername)
@@ -305,6 +307,7 @@ function server.start(conf)
 	function handler.message(fd, msg, sz)
 		local addr = handshake[fd]
 		if addr then
+			-- 第一次收到消息做个验证
 			auth(fd,addr,msg,sz)
 			handshake[fd] = nil
 		else

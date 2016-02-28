@@ -1,7 +1,7 @@
 #include "skynet.h"
 #include "lua-seri.h"
 
-#define KNRM  "\x1B[0m"
+#define KNRM  "\x1B[0m"	// 设置控制台颜色
 #define KRED  "\x1B[31m"
 
 #include <lua.h>
@@ -33,13 +33,13 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 	int trace = 1;
 	int r;
 	int top = lua_gettop(L);
-	if (top == 0) {
-		lua_pushcfunction(L, traceback);
-		lua_rawgetp(L, LUA_REGISTRYINDEX, _cb);
+	if (top == 0) {									// 第一次调用
+		lua_pushcfunction(L, traceback);			// push traceback, trace
+		lua_rawgetp(L, LUA_REGISTRYINDEX, _cb);		// push dispatch_message
 	} else {
-		assert(top == 2);
+		assert(top == 2);                           // 每次执行完并不清除栈顶的的traceback 和 dispatch_message，因此后面每次调用都是top == 2
 	}
-	lua_pushvalue(L,2);
+	lua_pushvalue(L,2);								// push dispatch_message
 
 	lua_pushinteger(L, type);
 	lua_pushlightuserdata(L, (void *)msg);
@@ -86,8 +86,9 @@ _callback(lua_State *L) {
 	int forward = lua_toboolean(L, 2);
 	luaL_checktype(L,1,LUA_TFUNCTION);
 	lua_settop(L,1);
-	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);
+	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);	// Registry[LUA_REGISTRYINDEX][_cb] = dispatch_message，每个snlua服务都以_cb作为callback的索引
 
+	// 别的协程也可能调用callback比如coroutine.wrap(function() skynet.start(function() ... end) end ) ()
 	lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
 	lua_State *gL = lua_tothread(L,-1);
 
@@ -166,6 +167,14 @@ get_dest_string(lua_State *L, int index) {
 	 lightuserdata message_ptr
 	 integer len
  */
+// 读入参数
+// addr		:目标服务地址，可以是".abcd"、":12345678"、"name"(通常是远程服务)
+// type		:消息type
+// session	:如果是nil则会分配session
+// msg		:如果msg是string，则sz为lua_tolstring
+// sz		:可选，仅对于msg为lightuserdata有用
+
+// 返回session
 static int
 _send(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));

@@ -5,6 +5,8 @@ local snax = require "snax"
 local cmd = {}
 local service = {}
 
+-- name = "snaxd.pingserver", func = snax.rawnewservice, "pingserver", "hello world"
+-- name用于查找，func用作new service, arg[1]是service name
 local function request(name, func, ...)
 	local ok, handle = pcall(func, ...)
 	local s = service[name]
@@ -12,7 +14,7 @@ local function request(name, func, ...)
 	if ok then
 		service[name] = handle
 	else
-		service[name] = tostring(handle)
+		service[name] = tostring(handle)	-- 调用失败service[name] 存错误字符串
 	end
 
 	for _,v in ipairs(s) do
@@ -26,15 +28,17 @@ local function request(name, func, ...)
 	end
 end
 
+-- 启动一个service，避免多个协程同时请求做了处理
+-- name用于查找，func用作new service, arg[1]是service name
 local function waitfor(name , func, ...)
 	local s = service[name]
 	if type(s) == "number" then
 		return s
 	end
-	local co = coroutine.running()
+	local co = coroutine.running()	-- 当前的协程，因为处理请求都是通过开一个新的协程
 
 	if s == nil then
-		s = {}
+		s = {}	-- s是后到的申请创建此服务的协程的协程列表，因为要保证协程在node中唯一，所以只有等待，等创建好了就会唤醒他们
 		service[name] = s
 	elseif type(s) == "string" then
 		error(s)
@@ -47,6 +51,7 @@ local function waitfor(name , func, ...)
 		return request(name, func, ...)
 	end
 
+	-- 已经有人去请求了，但是还没有等到结果，所以等别人来通知
 	table.insert(s, co)
 	skynet.wait()
 	s = service[name]
@@ -65,6 +70,8 @@ local function read_name(service_name)
 	end
 end
 
+-- service_name = "snaxd", subname = "pingserver"
+-- 保证服务service_name在节点内唯一
 function cmd.LAUNCH(service_name, subname, ...)
 	local realname = read_name(service_name)
 
@@ -182,8 +189,8 @@ skynet.start(function()
 	else
 		skynet.register(".service")
 	end
-	if skynet.getenv "standalone" then
-		skynet.register("SERVICE")
+	if skynet.getenv "standalone" then	-- master 结点
+		skynet.register("SERVICE")	-- master 结点才有SERVICE命名服务
 		register_global()
 	else
 		register_local()

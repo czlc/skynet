@@ -18,10 +18,16 @@
 #define MQ_IN_GLOBAL 1
 #define MQ_OVERLOAD 1024
 
+// 轮询处理global_queue中每个message_queue
+// 1.从global_queue中pop一个ctx的message_queue
+// 2.根据权重不同，处理一个或者多个此message_queue中的skynet_message
+// 3.如果此message_queue中还有剩余的skynet_message，则把此message_queue
+//   重新push到global_queue中，否则直到message_queue有新的skynet_message
+//   的时候再重新把此message_queue push到 global_queue中来
 struct message_queue {
-	struct spinlock lock;
-	uint32_t handle;
-	int cap;
+	struct spinlock lock;	// 多个线程可能同时对queue做操作
+	uint32_t handle;	// create ctx 的时候传入
+	int cap;			// queue size
 	int head;
 	int tail;
 	int release;
@@ -31,12 +37,15 @@ struct message_queue {
 	struct skynet_message *queue;
 	struct message_queue *next;
 };
+// 它可能同时被global_queue和skynet_context引用所以删除的时候需要注意 http://blog.codingnow.com/2012/08/skynet_bug.html
 
+// 无锁全局队列，worker从head取，新来的压入tail
 struct global_queue {
 	struct message_queue *head;
 	struct message_queue *tail;
 	struct spinlock lock;
 };
+// head和tail只增不减，通过GP来取得在数组queue中的位置
 
 static struct global_queue *Q = NULL;
 
@@ -84,7 +93,7 @@ skynet_mq_create(uint32_t handle) {
 	SPIN_INIT(q)
 	// When the queue is create (always between service create and service init) ,
 	// set in_global flag to avoid push it to global queue .
-	// If the service init success, skynet_context_new will call skynet_mq_push to push it to global queue.
+	// If the service init success, skynet_context_new will call skynet_mq_force_push to push it to global queue.
 	q->in_global = MQ_IN_GLOBAL;
 	q->release = 0;
 	q->overload = 0;
@@ -216,6 +225,8 @@ skynet_mq_init() {
 	Q=q;
 }
 
+// 删除message_queue step1：
+// 删除ctx的时候调用,因为还有可能被global_queue引用，所以不能直接删除
 void 
 skynet_mq_mark_release(struct message_queue *q) {
 	SPIN_LOCK(q)
@@ -236,6 +247,11 @@ _drop_queue(struct message_queue *q, message_drop drop_func, void *ud) {
 	_release(q);
 }
 
+// 删除message_queue step2：
+// 从global_queue pop出来dispatch消息的时候调用
+// 如果q->release == 1表明message_queue对应的ctx已经被删除，所以ctx已经不再持有对message_queue的引用，
+// 此时message_queue已经从global_queue弹出，因此可以真正删除此message_queue
+// 如果q->release == 0表面ctx还在，还不能删除
 void 
 skynet_mq_release(struct message_queue *q, message_drop drop_func, void *ud) {
 	SPIN_LOCK(q)

@@ -35,4 +35,5 @@ function skynet.queue()
 	end
 end
 
+-- 返回函数，每次调用得到一个新的队列
 return skynet.queue

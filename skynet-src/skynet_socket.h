@@ -3,25 +3,25 @@
 
 struct skynet_context;
 
-#define SKYNET_SOCKET_TYPE_DATA 1
-#define SKYNET_SOCKET_TYPE_CONNECT 2
+#define SKYNET_SOCKET_TYPE_DATA 1			// [C/S]有数据到达
+#define SKYNET_SOCKET_TYPE_CONNECT 2		// [C]连上了服务端
 #define SKYNET_SOCKET_TYPE_CLOSE 3
-#define SKYNET_SOCKET_TYPE_ACCEPT 4
+#define SKYNET_SOCKET_TYPE_ACCEPT 4			// [S]accept了客户端，但在START之前不能有数据交换
 #define SKYNET_SOCKET_TYPE_ERROR 5
 #define SKYNET_SOCKET_TYPE_UDP 6
 #define SKYNET_SOCKET_TYPE_WARNING 7
 
 struct skynet_socket_message {
-	int type;
-	int id;
-	int ud;
-	char * buffer;
+	int type;		// 见上
+	int id;			// socket id
+	int ud;			// for accept, ud is listen id ; for data, ud is size of data 
+	char * buffer;	// padding类型的数据在skynet_socket_message之后 
 };
 
-void skynet_socket_init();
-void skynet_socket_exit();
-void skynet_socket_free();
-int skynet_socket_poll();
+void skynet_socket_init();	// 创建socket资源
+void skynet_socket_exit();	// 退出socket线程
+void skynet_socket_free();	// 释放socket资源
+int skynet_socket_poll();	// breath
 
 int skynet_socket_send(struct skynet_context *ctx, int id, void *buffer, int sz);
 void skynet_socket_send_lowpriority(struct skynet_context *ctx, int id, void *buffer, int sz);

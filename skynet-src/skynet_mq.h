@@ -8,7 +8,7 @@ struct skynet_message {
 	uint32_t source;
 	int session;
 	void * data;
-	size_t sz;
+	size_t sz;	// ¸ß8Î»Îªtype
 };
 
 // type is encoding in skynet_message.sz high 8bit

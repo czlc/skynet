@@ -1,3 +1,4 @@
+-- loginserver是一个框架模板，一些具体的逻辑实现在login(conf)中的conf中
 local skynet = require "skynet"
 require "skynet.manager"
 local socket = require "socket"
@@ -142,13 +143,14 @@ local function accept(conf, s, fd, addr)
 
 	if ok then
 		err = err or ""
-		write("response 200",fd,  "200 "..crypt.base64encode(err).."\n")
+		write("response 200",fd,  "200 "..crypt.base64encode(err).."\n")   -- login step 8: L 将子 id 发送给 C 。子 id 多用于多重登陆（允许同一个账号同时登陆多次），一个 userid 和一个 subid 一起才是一次登陆的 username 。而每个 username 都对应有唯一的 secret 。
 	else
 		write("response 403",fd,  "403 Forbidden\n")
 		error(err)
 	end
 end
 
+-- conf 为logind.lua
 local function launch_master(conf)
 	local instance = conf.instance or 8
 	assert(instance > 0)
@@ -162,7 +164,7 @@ local function launch_master(conf)
 	end)
 
 	for i=1,instance do
-		table.insert(slave, skynet.newservice(SERVICE_NAME))
+		table.insert(slave, skynet.newservice(SERVICE_NAME)) -- 启动几个slave服务用于负载均衡
 	end
 
 	skynet.error(string.format("login server listen at : %s %d", host, port))

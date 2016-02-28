@@ -18,7 +18,7 @@
 #include <string.h>
 
 struct monitor {
-	int count;
+	int count;						// skynet_monitor count，每个worker一个
 	struct skynet_monitor ** m;
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
@@ -42,6 +42,7 @@ create_thread(pthread_t *thread, void *(*start_routine) (void *), void *arg) {
 	}
 }
 
+// work线程<=busy的时候唤醒一个
 static void
 wakeup(struct monitor *m, int busy) {
 	if (m->sleep >= m->count - busy) {
@@ -217,6 +218,7 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 void 
 skynet_start(struct skynet_config * config) {
 	if (config->daemon) {
+		// 避免多次启动
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}

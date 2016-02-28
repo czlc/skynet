@@ -147,7 +147,7 @@ mc_remote(lua_State *L) {
 static int
 mc_nextid(lua_State *L) {
 	uint32_t id = (uint32_t)luaL_checkinteger(L, 1);
-	id += 256;
+	id += 256; // 第8位保持不变，为harbor id
 	lua_pushinteger(L, (uint32_t)id);
 
 	return 1;

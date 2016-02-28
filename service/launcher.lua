@@ -3,7 +3,7 @@ local core = require "skynet.core"
 require "skynet.manager"	-- import manager apis
 local string = string
 
-local services = {}
+local services = {} -- services[inst] = service .. " " .. param
 local command = {}
 local instance = {} -- for confirm (function command.LAUNCH / command.ERROR / command.LAUNCHOK)
 
@@ -83,7 +83,7 @@ end
 
 function command.LAUNCH(_, service, ...)
 	launch_service(service, ...)
-	return NORET
+	return NORET -- 暂时不返回给调用者
 end
 
 function command.LOGLAUNCH(_, service, ...)
@@ -110,7 +110,7 @@ function command.LAUNCHOK(address)
 	-- init notice
 	local response = instance[address]
 	if response then
-		response(true, address)
+		response(true, address) -- 延迟返回
 		instance[address] = nil
 	end
 
@@ -139,7 +139,7 @@ skynet.dispatch("lua", function(session, address, cmd , ...)
 	local f = command[cmd]
 	if f then
 		local ret = f(address, ...)
-		if ret ~= NORET then
+		if ret ~= NORET then	-- 调用者必须知道那些命令不会返回
 			skynet.ret(skynet.pack(ret))
 		end
 	else

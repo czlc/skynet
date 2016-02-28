@@ -334,6 +334,7 @@ des_crypt( const uint32_t SK[32], const uint8_t input[8], uint8_t output[8] ) {
 	PUT_UINT32( X, output, 4 );
 }
 
+// 生成一个8字节的随机串
 static int
 lrandomkey(lua_State *L) {
 	char tmp[8];
@@ -894,17 +895,17 @@ luaopen_crypt(lua_State *L) {
 	luaL_Reg l[] = {
 		{ "hashkey", lhashkey },
 		{ "randomkey", lrandomkey },
-		{ "desencode", ldesencode },
-		{ "desdecode", ldesdecode },
+		{ "desencode", ldesencode }, // 双向，对n字节二进制串做des加密
+		{ "desdecode", ldesdecode }, // 双向，对des加密串做解密
 		{ "hexencode", ltohex },
 		{ "hexdecode", lfromhex },
-		{ "hmac64", lhmac64 },
+		{ "hmac64", lhmac64 }, // 单向，对8字节二进制串+secret做8字节信息摘要
 		{ "dhexchange", ldhexchange },
 		{ "dhsecret", ldhsecret },
 		{ "base64encode", lb64encode },
 		{ "base64decode", lb64decode },
-		{ "sha1", lsha1 },
-		{ "hmac_sha1", lhmac_sha1 },
+		{ "sha1", lsha1 }, // 单向，对n字节二进制串做20字节信息摘要
+		{ "hmac_sha1", lhmac_sha1 }, // 单向，对n字节二进制串+sectet做20字节信息摘要
 		{ "hmac_hash", lhmac_hash },
 		{ NULL, NULL },
 	};

@@ -51,11 +51,11 @@ struct harbor_msg_queue {
 };
 
 struct keyvalue {
-	struct keyvalue * next;
-	char key[GLOBALNAME_LENGTH];
-	uint32_t hash;
-	uint32_t value;
-	struct harbor_msg_queue * queue;
+	struct keyvalue * next;			// 同key的节点列表，开链式
+	char key[GLOBALNAME_LENGTH];	// hashmap的key
+	uint32_t hash;					// key对应的hash值
+	uint32_t value;					// handle，记录了全局名字对应的服务的全局handle
+	struct harbor_msg_queue * queue;// 发送给此名字服务的消息，因为名字还没有确定，所以先缓存下来
 };
 
 struct hashmap {
@@ -63,27 +63,27 @@ struct hashmap {
 };
 
 #define STATUS_WAIT 0
-#define STATUS_HANDSHAKE 1
-#define STATUS_HEADER 2
-#define STATUS_CONTENT 3
+#define STATUS_HANDSHAKE 1		// 握手
+#define STATUS_HEADER 2			// 协议size头
+#define STATUS_CONTENT 3		// 协议内容
 #define STATUS_DOWN 4
 
 struct slave {
-	int fd;
-	struct harbor_msg_queue *queue;
-	int status;
-	int length;
-	int read;
-	uint8_t size[4];
-	char * recv_buffer;
+	int fd;							// 和对方相连的socket id
+	struct harbor_msg_queue *queue; // 发送给此slave的消息，但是因为还没有完成握手协议，所以先存下来
+	int status;						// 与slave连接的状态
+	int length;						// msg消息长度，包括了header，传输中以大头的方式存储到size[4]
+	int read;						// 已经收到的字节数
+	uint8_t size[4];				// big endian 4 bytes length, the first one must be 0.
+	char * recv_buffer;				// msg消息缓冲
 };
 
 struct harbor {
-	struct skynet_context *ctx;
-	int id;
-	uint32_t slave;
-	struct hashmap * map;
-	struct slave s[REMOTE_MAX];
+	struct skynet_context *ctx;	// 
+	int id;						// 本地harbord id
+	uint32_t slave;				// 启动此harbor的cslave服务的handle
+	struct hashmap * map;		// 本地缓存的skynet 网络中的全局可见的服务 [名字]->handle
+	struct slave s[REMOTE_MAX];	// 最多可以和256个slave相连
 };
 
 // hash table
@@ -194,7 +194,7 @@ hash_insert(struct hashmap * hash, const char name[GLOBALNAME_LENGTH]) {
 	struct keyvalue ** pkv = &hash->node[h % HASH_SIZE];
 	struct keyvalue * node = skynet_malloc(sizeof(*node));
 	memcpy(node->key, name, GLOBALNAME_LENGTH);
-	node->next = *pkv;
+	node->next = *pkv;	// 前插
 	node->queue = NULL;
 	node->hash = h;
 	node->value = 0;
@@ -308,7 +308,7 @@ message_to_header(const uint32_t *message, struct remote_message_header *header)
 static void
 forward_local_messsage(struct harbor *h, void *msg, int sz) {
 	const char * cookie = msg;
-	cookie += sz - HEADER_COOKIE_LENGTH;
+	cookie += sz - HEADER_COOKIE_LENGTH;	// 去掉header长度后cookie指向msg->buffer
 	struct remote_message_header header;
 	message_to_header((const uint32_t *)cookie, &header);
 
@@ -332,7 +332,7 @@ send_remote(struct skynet_context * ctx, int fd, const char * buffer, size_t sz,
 		skynet_error(ctx, "remote message from :%08x to :%08x is too large.", cookie->source, cookie->destination);
 		return;
 	}
-	uint8_t * sendbuf = skynet_malloc(sz_header+4);
+	uint8_t * sendbuf = skynet_malloc(sz_header+4); // +4是编码sz_header
 	to_bigendian(sendbuf, (uint32_t)sz_header);
 	memcpy(sendbuf+4, buffer, sz);
 	header_to_message(cookie, sendbuf+4+sz);
@@ -349,6 +349,8 @@ dispatch_name_queue(struct harbor *h, struct keyvalue * node) {
 	struct skynet_context * context = h->ctx;
 	struct slave *s = &h->s[harbor_id];
 	int fd = s->fd;
+
+	// 还没有握手，不能发送消息，把node->queue导到s->queue
 	if (fd == 0) {
 		if (s->status == STATUS_DOWN) {
 			char tmp [GLOBALNAME_LENGTH+1];
@@ -386,6 +388,7 @@ dispatch_name_queue(struct harbor *h, struct keyvalue * node) {
 	}
 }
 
+// 握手成功，可以发送消息了
 static void
 dispatch_queue(struct harbor *h, int id) {
 	struct slave *s = &h->s[id];
@@ -425,7 +428,7 @@ push_socket_data(struct harbor *h, const struct skynet_socket_message * message)
 		return;
 	}
 	uint8_t * buffer = (uint8_t *)message->buffer;
-	int size = message->ud;
+	int size = message->ud;	// size 为这次收到的消息长度
 
 	for (;;) {
 		switch(s->status) {
@@ -449,7 +452,7 @@ push_socket_data(struct harbor *h, const struct skynet_socket_message * message)
 			// go though
 		}
 		case STATUS_HEADER: {
-			// big endian 4 bytes length, the first one must be 0.
+			// 首先读4字节大顶端编码的消息长度，因为消息长度限制，所以第一字节一定为0
 			int need = 4 - s->read;
 			if (size < need) {
 				memcpy(s->size + s->read, buffer, size);
@@ -465,7 +468,7 @@ push_socket_data(struct harbor *h, const struct skynet_socket_message * message)
 					close_harbor(h,id);
 					return;
 				}
-				s->length = s->size[1] << 16 | s->size[2] << 8 | s->size[3];
+				s->length = s->size[1] << 16 | s->size[2] << 8 | s->size[3];	// 接下来需要接收s->length字节
 				s->read = 0;
 				s->recv_buffer = skynet_malloc(s->length);
 				s->status = STATUS_CONTENT;
@@ -476,6 +479,7 @@ push_socket_data(struct harbor *h, const struct skynet_socket_message * message)
 		}
 		// go though
 		case STATUS_CONTENT: {
+			// 再读消息内容，长度由前面已经读出
 			int need = s->length - s->read;
 			if (size < need) {
 				memcpy(s->recv_buffer + s->read, buffer, size);
@@ -483,7 +487,7 @@ push_socket_data(struct harbor *h, const struct skynet_socket_message * message)
 				return;
 			}
 			memcpy(s->recv_buffer + s->read, buffer, need);
-			forward_local_messsage(h, s->recv_buffer, s->length);
+			forward_local_messsage(h, s->recv_buffer, s->length);	//  转发给本地的服务
 			s->length = 0;
 			s->read = 0;
 			s->recv_buffer = NULL;
@@ -508,7 +512,7 @@ update_name(struct harbor *h, const char name[GLOBALNAME_LENGTH], uint32_t handl
 	}
 	node->value = handle;
 	if (node->queue) {
-		dispatch_name_queue(h, node);
+		dispatch_name_queue(h, node);	// 有了名字可以发送缓存了的请求啦
 		release_queue(node->queue);
 		node->queue = NULL;
 	}
@@ -559,6 +563,7 @@ remote_send_name(struct harbor *h, uint32_t source, const char name[GLOBALNAME_L
 	if (node == NULL) {
 		node = hash_insert(h->map, name);
 	}
+	// 目标名字还有注册相应的handle，所以要先放到缓存队列中，当此名字注册了对应的handle就可以发送了
 	if (node->value == 0) {
 		if (node->queue == NULL) {
 			node->queue = new_queue();
@@ -567,7 +572,7 @@ remote_send_name(struct harbor *h, uint32_t source, const char name[GLOBALNAME_L
 		header.source = source;
 		header.destination = type << HANDLE_REMOTE_SHIFT;
 		header.session = (uint32_t)session;
-		push_queue(node->queue, (void *)msg, sz, &header);
+		push_queue(node->queue, (void *)msg, sz, &header);	// 还发不出去，先存起来，先去查名字对应的handle
 		char query[2+GLOBALNAME_LENGTH+1] = "Q ";
 		query[2+GLOBALNAME_LENGTH] = 0;
 		memcpy(query+2, name, GLOBALNAME_LENGTH);
@@ -583,16 +588,17 @@ handshake(struct harbor *h, int id) {
 	struct slave *s = &h->s[id];
 	uint8_t * handshake = skynet_malloc(1);
 	handshake[0] = (uint8_t)h->id;
-	skynet_socket_send(h->ctx, s->fd, handshake, 1);
+	skynet_socket_send(h->ctx, s->fd, handshake, 1); // 发送harbor id
 }
 
+// 处理收到的harbor类型协议
 static void
 harbor_command(struct harbor * h, const char * msg, size_t sz, int session, uint32_t source) {
 	const char * name = msg + 2;
 	int s = (int)sz;
 	s -= 2;
 	switch(msg[0]) {
-	case 'N' : {
+	case 'N' : {	// N name : update the global name
 		if (s <=0 || s>= GLOBALNAME_LENGTH) {
 			skynet_error(h->ctx, "Invalid global name %s", name);
 			return;
@@ -604,13 +610,13 @@ harbor_command(struct harbor * h, const char * msg, size_t sz, int session, uint
 		update_name(h, rn.name, rn.handle);
 		break;
 	}
-	case 'S' :
-	case 'A' : {
+	case 'S' :  // S fd id: connect to new harbor , we should send self_id to fd first , and then recv a id (check it), and at last send queue.
+	case 'A' : { // A fd id: accept new harbor , we should send self_id to fd , and then send queue.
 		char buffer[s+1];
 		memcpy(buffer, name, s);
 		buffer[s] = 0;
 		int fd=0, id=0;
-		sscanf(buffer, "%d %d",&fd,&id);
+		sscanf(buffer, "%d %d",&fd,&id);	// fd为和对方cslave相连的socket id，id为对方slave_id(即harbor id)
 		if (fd == 0 || id <= 0 || id>=REMOTE_MAX) {
 			skynet_error(h->ctx, "Invalid command %c %s", msg[0], buffer);
 			return;
@@ -622,7 +628,7 @@ harbor_command(struct harbor * h, const char * msg, size_t sz, int session, uint
 		}
 		slave->fd = fd;
 
-		skynet_socket_start(h->ctx, fd);
+		skynet_socket_start(h->ctx, fd);	// 调用它之前，脚本中有socket.abandon，说明cslave的socket收发转到harbor服务了
 		handshake(h, id);
 		if (msg[0] == 'S') {
 			slave->status = STATUS_HANDSHAKE;
@@ -657,7 +663,7 @@ mainloop(struct skynet_context * context, void * ud, int type, int session, uint
 	case PTYPE_SOCKET: {
 		const struct skynet_socket_message * message = msg;
 		switch(message->type) {
-		case SKYNET_SOCKET_TYPE_DATA:
+		case SKYNET_SOCKET_TYPE_DATA:	// 收到socket 数据
 			push_socket_data(h, message);
 			skynet_free(message->buffer);
 			break;

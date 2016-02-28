@@ -44,7 +44,7 @@ optstring(const char *key,const char * opt) {
 	if (str == NULL) {
 		if (opt) {
 			skynet_setenv(key, opt);
-			opt = skynet_getenv(key);
+			opt = skynet_getenv(key);	// 不直接返回opt是因为通过get之后的,string内存由lua控制
 		}
 		return opt;
 	}
@@ -77,6 +77,9 @@ _init_env(lua_State *L) {
 	lua_pop(L,1);
 }
 
+/* 若客户端关闭连接，而另一端仍然向它写数据，第一次写数据后会收到RST响应，此后再写数据，
+   内核将向进程发出SIGPIPE信号，通知进程此连接已经断开。而SIGPIPE信号的默认处理是终止
+   程序，因此需要忽略这个信号*/
 int sigign() {
 	struct sigaction sa;
 	sa.sa_handler = SIG_IGN;
@@ -84,6 +87,7 @@ int sigign() {
 	return 0;
 }
 
+// 配置文件里如果写上   xxx = $XXX 这个值就从系统环境变量的 XXX 里读
 static const char * load_config = "\
 	local config_name = ...\
 	local f = assert(io.open(config_name))\
@@ -121,14 +125,14 @@ main(int argc, char *argv[]) {
 	int err = luaL_loadstring(L, load_config);
 	assert(err == LUA_OK);
 	lua_pushstring(L, config_file);
-
-	err = lua_pcall(L, 1, 1, 0);
+	
+	err = lua_pcall(L, 1, 1, 0);	// stack top 为load_config的result
 	if (err) {
 		fprintf(stderr,"%s\n",lua_tostring(L,-1));
 		lua_close(L);
 		return 1;
-	}
-	_init_env(L);
+	} 
+	_init_env(L);	// 把从config中读到的result写入env
 
 	config.thread =  optint("thread",8);
 	config.module_path = optstring("cpath","./cservice/?.so");

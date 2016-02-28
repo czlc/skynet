@@ -23,7 +23,7 @@ int
 skynet_harbor_message_isremote(uint32_t handle) {
 	assert(HARBOR != ~0);
 	int h = (handle & ~HANDLE_MASK);
-	return h != HARBOR && h !=0;
+	return h != HARBOR && h !=0;	// h == HARBOR说明是本结点的harbor id，所以不用远程消息
 }
 
 void

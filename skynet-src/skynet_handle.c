@@ -40,6 +40,8 @@ skynet_handle_register(struct skynet_context *ctx) {
 	for (;;) {
 		int i;
 		for (i=0;i<s->slot_size;i++) {
+			// 1.某个数a对 2^n 取模可以优化成 a & (2^n-1)
+			// 2.2个数如果对 2^n 取模不同，那么对 2^(n+1) 取模也会不同，这就避免了扩展时候的冲突
 			uint32_t handle = (i+s->handle_index) & HANDLE_MASK;
 			int hash = handle & (s->slot_size-1);
 			if (s->slot[hash] == NULL) {
@@ -129,6 +131,7 @@ skynet_handle_retireall() {
 	}
 }
 
+// 通过handle获得ctx的唯一途径，需要配套使用skynet_context_release，防止泄漏
 struct skynet_context * 
 skynet_handle_grab(uint32_t handle) {
 	struct handle_storage *s = H;
@@ -148,6 +151,7 @@ skynet_handle_grab(uint32_t handle) {
 	return result;
 }
 
+// 根据一个结点内名字.xxxxx找到相应的handle
 uint32_t 
 skynet_handle_findname(const char * name) {
 	struct handle_storage *s = H;

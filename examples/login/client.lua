@@ -7,7 +7,7 @@ if _VERSION ~= "Lua 5.3" then
 	error "Use lua 5.3"
 end
 
-local fd = assert(socket.connect("127.0.0.1", 8001))
+local fd = assert(socket.connect("127.0.0.1", 8001)) -- 连接loginserver
 
 local function writeline(fd, text)
 	socket.send(fd, text .. "\n")
@@ -57,14 +57,15 @@ local readline = unpack_f(unpack_line)
 local challenge = crypt.base64decode(readline())
 
 local clientkey = crypt.randomkey()
-writeline(fd, crypt.base64encode(crypt.dhexchange(clientkey)))
+writeline(fd, crypt.base64encode(crypt.dhexchange(clientkey))) -- 即使截获这个值，也反推不出clientkey(计算对数相当困难)，从而也无法计算secret
 local secret = crypt.dhsecret(crypt.base64decode(readline()), clientkey)
 
 print("sceret is ", crypt.hexencode(secret))
 
 local hmac = crypt.hmac64(challenge, secret)
-writeline(fd, crypt.base64encode(hmac))
+writeline(fd, crypt.base64encode(hmac)) -- login step 3:C 和 L 交换后续通讯用的密钥 secret ，并立刻验证。
 
+-- login step 1: C 向 A 发起一次认证请求 (A 通常是第三方认证平台)，获得一个 token 。这个 token 里通常包含有用户名称以及用于校验用户合法性的其它信息。
 local token = {
 	server = "sample",
 	user = "hello",
@@ -80,7 +81,7 @@ end
 
 local etoken = crypt.desencode(secret, encode_token(token))
 local b = crypt.base64encode(etoken)
-writeline(fd, crypt.base64encode(etoken))
+writeline(fd, crypt.base64encode(etoken)) -- login step 2:C 将他希望登陆的登陆点 G1 (或其它登陆点，可由系统设计的负载均衡器来选择）以及 step 1 获得的 token 一起发送给 L 。
 
 local result = readline()
 print(result)
@@ -129,7 +130,7 @@ end
 
 local text = "echo"
 local index = 1
-
+-- login step 9:C 得到 L 的确认后，断开和 L 的连接。然后连接 G1 ，并利用 username 和 secret 进行握手。
 print("connect")
 fd = assert(socket.connect("127.0.0.1", 8888))
 last = ""

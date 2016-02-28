@@ -1,19 +1,20 @@
+-- 组网工作由cmaster和cslave完成
 local skynet = require "skynet"
 local socket = require "socket"
 require "skynet.manager"	-- import skynet.launch, ...
 local table = table
 
-local slaves = {}
-local connect_queue = {}
-local globalname = {}
+local slaves = {}			-- 和本slave相连接的slave，包括主动连过来的和主动连过去的[harbor_id/slave_id] -> socket id
+local connect_queue = {}	-- 初始化结束后，需要去连接的slave [slave_id] -> address
+local globalname = {}		-- 全局名字
 local queryname = {}
-local harbor = {}
+local harbor = {}			-- 命令处理函数
 local harbor_service
 local monitor = {}
 local monitor_master_set = {}
 
 local function read_package(fd)
-	local sz = socket.read(fd, 1)
+	local sz = socket.read(fd, 1)		-- 先读首字节,它描述了包的大小
 	assert(sz, "closed")
 	sz = string.byte(sz)
 	local content = assert(socket.read(fd, sz), "closed")
@@ -24,7 +25,7 @@ local function pack_package(...)
 	local message = skynet.packstring(...)
 	local size = #message
 	assert(size <= 255 , "too long")
-	return string.char(size) .. message
+	return string.char(size) .. message	-- 首字节为大小
 end
 
 local function monitor_clear(id)
@@ -37,12 +38,14 @@ local function monitor_clear(id)
 	end
 end
 
+-- master通知迎新，那就去连吧
 local function connect_slave(slave_id, address)
 	local ok, err = pcall(function()
 		if slaves[slave_id] == nil then
 			local fd = assert(socket.open(address), "Can't connect to "..address)
 			skynet.error(string.format("Connect to harbor %d (fd=%d), %s", slave_id, fd, address))
 			slaves[slave_id] = fd
+			-- 转移socket操作到harbor服务
 			monitor_clear(slave_id)
 			socket.abandon(fd)
 			skynet.send(harbor_service, "harbor", string.format("S %d %d",fd,slave_id))
@@ -75,17 +78,18 @@ local function response_name(name)
 	end
 end
 
+-- 监控master发来的消息
 local function monitor_master(master_fd)
 	while true do
 		local ok, t, id_name, address = pcall(read_package,master_fd)
 		if ok then
-			if t == 'C' then
-				if connect_queue then
+			if t == 'C' then			-- master通知有新的slave接入到网络，本slave需要去连接这个新的slave
+				if connect_queue then	-- 有connect_queue表明本服务还没有初始完毕，先存下来待初始化结束后再去连接
 					connect_queue[id_name] = address
 				else
 					connect_slave(id_name, address)
 				end
-			elseif t == 'N' then
+			elseif t == 'N' then	-- NAME globalname address
 				globalname[id_name] = address
 				response_name(id_name)
 				if connect_queue == nil then
@@ -112,7 +116,7 @@ end
 
 local function accept_slave(fd)
 	socket.start(fd)
-	local id = socket.read(fd, 1)
+	local id = socket.read(fd, 1)	-- 对方harbor服务发过来的handshake，为对方harbor id
 	if not id then
 		skynet.error(string.format("Connection (fd =%d) closed", fd))
 		socket.close(fd)
@@ -125,6 +129,7 @@ local function accept_slave(fd)
 		return
 	end
 	slaves[id] = fd
+	-- 转移socket操作到harbor服务
 	monitor_clear(id)
 	socket.abandon(fd)
 	skynet.error(string.format("Harbor %d connected (fd = %d)", id, fd))
@@ -169,6 +174,7 @@ local function monitor_harbor(master_fd)
 	end
 end
 
+-- fd是master的socket id，name是要注册的名字，handle是名字对应的服务handle
 function harbor.REGISTER(fd, name, handle)
 	assert(globalname[name] == nil)
 	globalname[name] = handle
@@ -237,9 +243,10 @@ skynet.start(function()
 	skynet.dispatch("text", monitor_harbor(master_fd))
 
 	harbor_service = assert(skynet.launch("harbor", harbor_id, skynet.self()))
-
+	-- step1:向master发送握手协议
 	local hs_message = pack_package("H", harbor_id, slave_address)
 	socket.write(master_fd, hs_message)
+	-- step2:收到master发过来的通知：有一大波slave将连过来
 	local t, n = read_package(master_fd)
 	assert(t == "W" and type(n) == "number", "slave shakehand failed")
 	skynet.error(string.format("Waiting for %d harbors", n))
@@ -260,7 +267,7 @@ skynet.start(function()
 		end)
 		skynet.wait()
 	end
-	socket.close(slave_fd)
+	socket.close(slave_fd)	-- 关闭监听端口，如果再有新节点加入网络，老节点主动去连接新节点
 	skynet.error("Shakehand ready")
 	skynet.fork(ready)
 end)

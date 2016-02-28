@@ -23,20 +23,21 @@ local channel_socket_meta = {
 local socket_error = setmetatable({}, {__tostring = function() return "[Error: socket]" end })	-- alias for error object
 socket_channel.error = socket_error
 
+-- 创建一个 channel 对象
 function socket_channel.channel(desc)
 	local c = {
-		__host = assert(desc.host),
-		__port = assert(desc.port),
-		__backup = desc.backup,
-		__auth = desc.auth,
-		__response = desc.response,	-- It's for session mode
-		__request = {},	-- request seq { response func or session }	-- It's for order mode
-		__thread = {}, -- coroutine seq or session->coroutine map
-		__result = {}, -- response result { coroutine -> result }
+		__host = assert(desc.host),		-- 主机名
+		__port = assert(desc.port),		-- 端口
+		__backup = desc.backup,			-- 备用地址列表
+		__auth = desc.auth,				-- 验证函数
+		__response = desc.response,		-- It's for session mode
+		__request = {},					-- request seq { response func or session }	-- It's for order mode 请求序列，和__result一一对应
+		__thread = {},					-- coroutine seq or session->coroutine map
+		__result = {},					-- response result { coroutine -> result }
 		__result_data = {},
-		__connecting = {},
-		__sock = false,
-		__closed = false,
+		__connecting = {},				-- 正在连接的协程，如果有多个服务请求连接，只有一个真正尝试，其余的都在wait
+		__sock = false,					-- 连接fd的封装，channel_socket_meta
+		__closed = false,				-- true为正在关闭socket
 		__authcoroutine = false,
 		__nodelay = desc.nodelay,
 	}
@@ -94,7 +95,7 @@ local function dispatch_by_session(self)
 	while self.__sock do
 		local ok , session, result_ok, result_data, padding = pcall(response, self.__sock)
 		if ok and session then
-			local co = self.__thread[session]
+			local co = self.__thread[session]	-- 看是响应哪个请求，相应等待的协程可以放行了
 			if co then
 				if padding and result_ok then
 					-- If padding is true, append result_data to a table (self.__result_data[co])
@@ -239,7 +240,7 @@ local function connect_once(self)
 	end
 
 	self.__sock = setmetatable( {fd} , channel_socket_meta )
-	self.__dispatch_thread = skynet.fork(dispatch_function(self), self)
+	self.__dispatch_thread = skynet.fork(dispatch_function(self), self) -- 开启一个线程来处理请求
 
 	if self.__auth then
 		self.__authcoroutine = coroutine.running()

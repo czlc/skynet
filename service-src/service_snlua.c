@@ -55,7 +55,7 @@ traceback (lua_State *L) {
 static void
 _report_launcher_error(struct skynet_context *ctx) {
 	// sizeof "ERROR" == 5
-	skynet_sendname(ctx, 0, ".launcher", PTYPE_TEXT, 0, "ERROR", 5);
+	skynet_sendname(ctx, 0, ".launcher", PTYPE_TEXT, 0, "ERROR", 5);	// 向.launcher服务发送一个错误消息
 }
 
 static const char *
@@ -71,14 +71,14 @@ static int
 _init(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz) {
 	lua_State *L = l->L;
 	l->ctx = ctx;
-	lua_gc(L, LUA_GCSTOP, 0);
-	lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
-	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
+	lua_gc(L, LUA_GCSTOP, 0);	/* stop collector during initialization, reduce the GC overhead when creating large number of objects that are not garbage */
+	lua_pushboolean(L, 1);  	/* signal for libraries to ignore env. vars. */
+	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");	//  ignores environment variables：ignoring LUA_INIT,also ignores the values of LUA_PATH and LUA_CPATH
 	luaL_openlibs(L);
 	lua_pushlightuserdata(L, ctx);
 	lua_setfield(L, LUA_REGISTRYINDEX, "skynet_context");
 	luaL_requiref(L, "skynet.codecache", codecache , 0);
-	lua_pop(L,1);
+	lua_pop(L,1);	// pop require
 
 	const char *path = optstring(ctx, "lua_path","./lualib/?.lua;./lualib/?/init.lua");
 	lua_pushstring(L, path);
@@ -105,7 +105,7 @@ _init(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz)
 		return 1;
 	}
 	lua_pushlstring(L, args, sz);
-	r = lua_pcall(L,1,0,1);
+	r = lua_pcall(L,1,0,1);	// 调用loader.lua(L, args, ret, traceback)
 	if (r != LUA_OK) {
 		skynet_error(ctx, "lua loader error : %s", lua_tostring(L, -1));
 		_report_launcher_error(ctx);
@@ -131,16 +131,23 @@ _launch(struct skynet_context * context, void *ud, int type, int session, uint32
 	return 0;
 }
 
+/*
+	将 lua 服务的启动流程改为两步，先创建出空的 lua vm 。然后注册一个专用于启动的消息
+	处理函数，并立刻给自己发一个启动消息。这个消息一定是消息队列里的第一个消息。
+	接下来由这个启动消息来触发 lua vm 的进一步初始化过程。这样，就可以充分利用多核来处理
+	并发登陆请求了。
+	http://blog.codingnow.com/2013/06/skynet_watchdog.html
+*/
 int
 snlua_init(struct snlua *l, struct skynet_context *ctx, const char * args) {
 	int sz = strlen(args);
 	char * tmp = skynet_malloc(sz);
 	memcpy(tmp, args, sz);
 	skynet_callback(ctx, l , _launch);
-	const char * self = skynet_command(ctx, "REG", NULL);
+	const char * self = skynet_command(ctx, "REG", NULL);	// 获得16进制字符串格式的handle ":xxxxxxxx"
 	uint32_t handle_id = strtoul(self+1, NULL, 16);
 	// it must be first message
-	skynet_send(ctx, 0, handle_id, PTYPE_TAG_DONTCOPY,0, tmp, sz);
+	skynet_send(ctx, 0, handle_id, PTYPE_TAG_DONTCOPY,0, tmp, sz); // 使得init可以很快返回，真正的启动应该放到其它线程来做
 	return 0;
 }
 

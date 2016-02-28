@@ -29,17 +29,19 @@ end
 
 local function suspend(s)
 	assert(not s.co)
-	s.co = coroutine.running()
+	s.co = coroutine.running()		-- 保存当前运行的协程，消息到来的时候根据socket id获得s.co进而唤醒等待
 	skynet.wait(s.co)
 	-- wakeup closing corouting every time suspend,
 	-- because socket.close() will wait last socket buffer operation before clear the buffer.
-	if s.closing then
+	if s.closing then			-- 如果正在关闭中(因为要等待此socket被读取完，所以分阶段关闭)，wait返回后就可以唤醒关闭携程执行接下来的关闭流程
 		skynet.wakeup(s.closing)
 	end
 end
 
 -- read skynet_socket.h for these macro
 -- SKYNET_SOCKET_TYPE_DATA = 1
+
+-- 有数据到了，先存下来
 socket_message[1] = function(id, size, data)
 	local s = socket_pool[id]
 	if s == nil then
@@ -159,14 +161,16 @@ skynet.register_protocol {
 	name = "socket",
 	id = skynet.PTYPE_SOCKET,	-- PTYPE_SOCKET = 6
 	unpack = driver.unpack,
-	dispatch = function (_, _, t, ...)
+	dispatch = function (_, _, t, ...)	-- _,_,表示session和source, t是message->type(SKYNET_SOCKET_TYPE_XXXX)，见skynet_socket_message
 		socket_message[t](...)
 	end
 }
 
+-- 创建一个socket对象
 local function connect(id, func)
 	local newbuffer
 	if func == nil then
+		-- 非listen socket，创建收发缓冲
 		newbuffer = driver.buffer()
 	end
 	local s = {
@@ -175,13 +179,13 @@ local function connect(id, func)
 		connected = false,
 		connecting = true,
 		read_required = false,
-		co = false,
-		callback = func,
+		co = false,					-- suspend的时候保存当前协程，以便之后修道消息能够唤醒
+		callback = func,			-- accept回调
 		protocol = "TCP",
 	}
 	assert(not socket_pool[id], "socket is not closed")
 	socket_pool[id] = s
-	suspend(s)
+	suspend(s)						-- [S]等待SKYNET_SOCKET_TYPE_ACCEPT [C]等待SKYNET_SOCKET_TYPE_CONNECT
 	local err = s.connecting
 	s.connecting = nil
 	if s.connected then
@@ -192,8 +196,11 @@ local function connect(id, func)
 	end
 end
 
+-- 类型：[C] 阻塞函数，连接成功或者失败返回
+-- 描述：客户主动连接指定地址和端口
+-- 返回：成功返回此连接的socket id，否则返回nil
 function socket.open(addr, port)
-	local id = driver.connect(addr,port)
+	local id = driver.connect(addr,port)	-- id(socket id)和此context绑定了
 	return connect(id)
 end
 
@@ -203,9 +210,13 @@ function socket.bind(os_fd)
 end
 
 function socket.stdin()
-	return socket.bind(0)
+	return socket.bind(0)	-- 返回socket id
 end
 
+-- 类型：[S] 立即函数
+-- 1.对于listen的socket来说，start是开始监控客户端连接事件(plisten->listen)，传入的func在客户端连上的时候调用
+-- 2.对于accept的socket来说，start是开始监控和客户端的数据交换(paccept->connected)
+-- 返回：成功返回传入id，否则返回nil
 function socket.start(id, func)
 	driver.start(id)
 	return connect(id, func)
@@ -232,6 +243,8 @@ function socket.close_fd(id)
 	driver.close(id)
 end
 
+-- 类型：[C/S] 立即函数
+-- 描述：
 function socket.close(id)
 	local s = socket_pool[id]
 	if s == nil then
@@ -257,6 +270,9 @@ function socket.close(id)
 	socket_pool[id] = nil
 end
 
+-- 类型：[C/S] 阻塞函数
+-- 描述：从指定socket上读sz大小的数据。
+-- 返回：成功读到sz字节数据，则返回数据字符串;如果因为异常导致没读到要求字符串则返回false + 读到的字符串
 function socket.read(id, sz)
 	local s = socket_pool[id]
 	assert(s)
@@ -300,6 +316,9 @@ function socket.read(id, sz)
 	end
 end
 
+--[[
+	从一个 socket 上读所有的数据，直到 socket 主动断开，或在其它 coroutine 用 socket.close 关闭它。
+]]
 function socket.readall(id)
 	local s = socket_pool[id]
 	assert(s)
@@ -314,6 +333,10 @@ function socket.readall(id)
 	return driver.readall(s.buffer, buffer_pool)
 end
 
+--[[
+	从一个 socket 上读一行数据。sep 指行分割符。默认的 sep 为 "\n"。读到的字符串是不包含这个分割符的。
+	阻塞的
+]]
 function socket.readline(id, sep)
 	sep = sep or "\n"
 	local s = socket_pool[id]
@@ -335,6 +358,7 @@ function socket.readline(id, sep)
 	end
 end
 
+-- 等待一个 socket 可读
 function socket.block(id)
 	local s = socket_pool[id]
 	if not s or not s.connected then
@@ -348,12 +372,15 @@ end
 
 socket.write = assert(driver.send)
 socket.lwrite = assert(driver.lsend)
-socket.header = assert(driver.header)
+socket.header = assert(driver.header) -- 取包头(字节数)
 
 function socket.invalid(id)
 	return socket_pool[id] == nil
 end
 
+-- 类型：[S] 立即函数
+-- 描述：监听指定地址和端口，返回后socket处于plisten状态，需要调用socket.start之后才能accept客户端连接
+-- 返回：监听socket id
 function socket.listen(host, port, backlog)
 	if port == nil then
 		host, port = string.match(host, "([^:]+):(.+)$")
@@ -370,10 +397,10 @@ function socket.lock(id)
 		lock_set = {}
 		s.lock = lock_set
 	end
-	if #lock_set == 0 then
+	if #lock_set == 0 then					-- 第一个拥有锁的人可以继续走
 		lock_set[1] = true
 	else
-		local co = coroutine.running()
+		local co = coroutine.running()		-- 第二个人只能等待
 		table.insert(lock_set, co)
 		skynet.wait(co)
 	end
@@ -384,7 +411,7 @@ function socket.unlock(id)
 	assert(s)
 	local lock_set = assert(s.lock)
 	table.remove(lock_set,1)
-	local co = lock_set[1]
+	local co = lock_set[1]					-- 唤醒第一个等待的人
 	if co then
 		skynet.wakeup(co)
 	end
@@ -400,6 +427,7 @@ function socket.abandon(id)
 	socket_pool[id] = nil
 end
 
+-- 设置接收缓冲的大小，如果超出会断开连接
 function socket.limit(id, limit)
 	local s = assert(socket_pool[id])
 	s.buffer_limit = limit

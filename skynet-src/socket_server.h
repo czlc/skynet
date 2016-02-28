@@ -13,9 +13,10 @@
 
 struct socket_server;
 
+// 收集到的message，用于回应发出socket请求的ctx
 struct socket_message {
 	int id;
-	uintptr_t opaque;
+	uintptr_t opaque; // ctx handle
 	int ud;	// for accept, ud is new connection id ; for data, ud is size of data 
 	char * data;
 };
@@ -55,9 +56,9 @@ int64_t socket_server_udp_send(struct socket_server *, int id, const struct sock
 const struct socket_udp_address * socket_server_udp_address(struct socket_server *, struct socket_message *, int *addrsz);
 
 struct socket_object_interface {
-	void * (*buffer)(void *);
-	int (*size)(void *);
-	void (*free)(void *);
+	void * (*buffer)(void *);	// 获得buffer数据
+	int (*size)(void *);		// 获得buffer大小
+	void (*free)(void *);		// 释放buffer
 };
 
 // if you send package sz == -1, use soi.

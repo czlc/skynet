@@ -15,7 +15,8 @@ skynet.register_protocol {
 	unpack = skynet.unpack,
 }
 
-
+-- "pingserver"
+-- 获得一个snax service的接口，它包括accept、response、system接口
 function snax.interface(name)
 	if typeclass[name] then
 		return typeclass[name]
@@ -25,14 +26,15 @@ function snax.interface(name)
 
 	local ret = {
 		name = name,
-		accept = {},
-		response = {},
-		system = {},
+		accept = {},	-- accept 前缀表示这个方法没有回应
+		response = {},  -- response 前缀表示这个方法一定有一个回应
+		system = {},	-- 一些全局函数，比如init、exit
 	}
 
+	-- 按accept, response,system分类
 	for _,v in ipairs(si) do
 		local id, group, name, f = table.unpack(v)
-		ret[group][name] = id
+		ret[group][name] = id -- 便于查找id，用的时候根据id可以找到f
 	end
 
 	typeclass[name] = ret
@@ -44,6 +46,7 @@ local meta = { __tostring = function(v) return string.format("[%s:%x]", v.type, 
 local skynet_send = skynet.send
 local skynet_call = skynet.call
 
+-- service.post.__index的时候返回指定函数，调用无需等待结果
 local function gen_post(type, handle)
 	return setmetatable({} , {
 		__index = function( t, k )
@@ -57,6 +60,7 @@ local function gen_post(type, handle)
 		end })
 end
 
+-- service.req.__index的时候返回指定函数，调用需要等待结果
 local function gen_req(type, handle)
 	return setmetatable({} , {
 		__index = function( t, k )
@@ -70,20 +74,21 @@ local function gen_req(type, handle)
 		end })
 end
 
+-- type是按[group][name]->id的查询table
 local function wrapper(handle, name, type)
 	return setmetatable ({
-		post = gen_post(type, handle),
-		req = gen_req(type, handle),
+		post = gen_post(type, handle),	-- 使得post.xxx函数调用 是发送消息到snaxd
+		req = gen_req(type, handle),	-- 使得req.xxx函数调用 是发消息到snaxd
 		type = name,
 		handle = handle,
 		}, meta)
 end
 
-local handle_cache = setmetatable( {} , { __mode = "kv" } )
+local handle_cache = setmetatable( {} , { __mode = "kv" } ) -- cache 所有的snaxd服务
 
 function snax.rawnewservice(name, ...)
 	local t = snax.interface(name)
-	local handle = skynet.newservice("snaxd", name)
+	local handle = skynet.newservice("snaxd", name) -- 启动一个snaxd服务
 	assert(handle_cache[handle] == nil)
 	if t.system.init then
 		skynet.call(handle, "snax", t.system.init, ...)
@@ -91,6 +96,7 @@ function snax.rawnewservice(name, ...)
 	return handle
 end
 
+-- 绑定snaxd service的handle和相关service name
 function snax.bind(handle, type)
 	local ret = handle_cache[handle]
 	if ret then
@@ -103,6 +109,7 @@ function snax.bind(handle, type)
 	return ret
 end
 
+-- "pingserver", "hello world"
 function snax.newservice(name, ...)
 	local handle = snax.rawnewservice(name, ...)
 	return snax.bind(handle, name)
@@ -118,6 +125,7 @@ end
 
 function snax.uniqueservice(name, ...)
 	local handle = assert(skynet.call(".service", "lua", "LAUNCH", "snaxd", name, ...))
+	-- 此handle是snaxd的handle，而不是name对应service的handle
 	return snax.bind(handle, name)
 end
 
@@ -128,6 +136,7 @@ end
 
 function snax.queryservice(name)
 	local handle = assert(skynet.call(".service", "lua", "QUERY", "snaxd", name))
+	-- 此handle是snaxd的handle，而不是name对应service的handle
 	return snax.bind(handle, name)
 end
 

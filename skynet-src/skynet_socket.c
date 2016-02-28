@@ -29,7 +29,7 @@ skynet_socket_free() {
 	SOCKET_SERVER = NULL;
 }
 
-// mainloop thread
+// mainloop thread, 把处理结果转发给请求者的服务，padding是把字符串data加到结构体末尾,data是接收到的数据
 static void
 forward_message(int type, bool padding, struct socket_message * result) {
 	struct skynet_socket_message *sm;

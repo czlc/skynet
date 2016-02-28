@@ -18,20 +18,26 @@
 
 #define MAX_INFO 128
 // MAX_SOCKET will be 2^MAX_SOCKET_P
+
+/*
+	之所以有SOCKET_TYPE_PLISTEN和SOCKET_TYPE_PACCEPT，是因为，我们有时会希望把这个 socket 
+	的操作权转让给别的服务去处理，也就是说，你可以把 connect socket id 这个数字通过消息发送给
+	其它服务，其他服务也可以去操作它。任何一个服务需要调用 socket.start(id) 以获得 socket 的数据。
+*/
 #define MAX_SOCKET_P 16
 #define MAX_EVENT 64
 #define MIN_READ_BUFFER 64
-#define SOCKET_TYPE_INVALID 0
-#define SOCKET_TYPE_RESERVE 1
-#define SOCKET_TYPE_PLISTEN 2
-#define SOCKET_TYPE_LISTEN 3
-#define SOCKET_TYPE_CONNECTING 4
-#define SOCKET_TYPE_CONNECTED 5
-#define SOCKET_TYPE_HALFCLOSE 6
-#define SOCKET_TYPE_PACCEPT 7
+#define SOCKET_TYPE_INVALID 0		// [C/S]socket可用状态
+#define SOCKET_TYPE_RESERVE 1		// [C/S]socket待用状态
+#define SOCKET_TYPE_PLISTEN 2		// [S]服务端准备监听客户端连接，等待START命令
+#define SOCKET_TYPE_LISTEN 3		// [S]收到START命令[PLISTEN->LISTEN]，服务端开始监听客户端连接
+#define SOCKET_TYPE_CONNECTING 4	// [C]客户端发起连接请求
+#define SOCKET_TYPE_CONNECTED 5		// [C/S]收到START命令[PACCEPT->ACCEPT]，双方设置为CONNECTED状态
+#define SOCKET_TYPE_HALFCLOSE 6		// [C/S]单方面关闭socket，这个时候不再接收消息(丢弃)，把本方的剩余发送完毕了事
+#define SOCKET_TYPE_PACCEPT 7		// [S]服务端Accept一个客户端，等待START命令
 #define SOCKET_TYPE_BIND 8
 
-#define MAX_SOCKET (1<<MAX_SOCKET_P)
+#define MAX_SOCKET (1<<MAX_SOCKET_P)	// 最多支持65536个连接
 
 #define PRIORITY_HIGH 0
 #define PRIORITY_LOW 1
@@ -55,52 +61,54 @@
 
 struct write_buffer {
 	struct write_buffer * next;
-	void *buffer;
-	char *ptr;
-	int sz;
-	bool userobject;
+	void *buffer;					// 发送缓冲首地址,send完之后删除
+	char *ptr;						// 指向buffer的待发送位置
+	int sz;							// 剩余待发送的size
+	bool userobject;				// 是否使用用户自定义对象，对于自定义对象，有其特有接口，见socket_object_interface
 	uint8_t udp_address[UDP_ADDRESS_SIZE];
 };
 
 #define SIZEOF_TCPBUFFER (offsetof(struct write_buffer, udp_address[0]))
 #define SIZEOF_UDPBUFFER (sizeof(struct write_buffer))
 
+// 发送缓冲队列
 struct wb_list {
 	struct write_buffer * head;
 	struct write_buffer * tail;
 };
 
 struct socket {
-	uintptr_t opaque;
-	struct wb_list high;
-	struct wb_list low;
-	int64_t wb_size;
-	int fd;
-	int id;
+	uintptr_t opaque;	// context handle
+	struct wb_list high;// 高优先级发送队列
+	struct wb_list low;	// 低优先级发送队列
+	int64_t wb_size;	// 将要写入(发送)的字节数
+	int fd;				// 套接字描述符
+	int id;				// socket id
 	uint16_t protocol;
-	uint16_t type;
+	uint16_t type;			// SOCKET状态
 	union {
-		int size;
+		int size;			// 接收缓冲大小，在收消息的时候会调整
 		uint8_t udp_address[UDP_ADDRESS_SIZE];
 	} p;
 };
 
 struct socket_server {
-	int recvctrl_fd;
-	int sendctrl_fd;
-	int checkctrl;
-	poll_fd event_fd;
-	int alloc_id;
-	int event_n;
-	int event_index;
-	struct socket_object_interface soi;
-	struct event ev[MAX_EVENT];
-	struct socket slot[MAX_SOCKET];
-	char buffer[MAX_INFO];
+	int recvctrl_fd;					// 控制命令接收端
+	int sendctrl_fd;					// 控制命令发送端
+	int checkctrl;						// 是否需要检测控制命令到来，默认为1(检测)
+	poll_fd event_fd;					// epoll fd
+	int alloc_id;						// socket id分配器
+	int event_n;						// 当前收集(sp_wait)到的事件个数
+	int event_index;					// 当前事件处理索引
+	struct socket_object_interface soi;	// 自定义对象操作回调接口(global)
+	struct event ev[MAX_EVENT];			// 收集到的事件
+	struct socket slot[MAX_SOCKET];		// socket池
+	char buffer[MAX_INFO];				// 零时缓存，用于存字符串处理结果，return 到skynet_socket_poll的时候需要拷贝出来(设置padding为true)
 	uint8_t udpbuffer[MAX_UDP_PACKAGE];
-	fd_set rfds;
+	fd_set rfds;						// 用于select控制命令的fd_set
 };
 
+// 多数请求都带有opaque，它是发出请求的ctx的handle，因为所有的socket命令在一个单独的线程处理，处理完后需要通知相应的ctx
 struct request_open {
 	int id;
 	int port;
@@ -110,7 +118,7 @@ struct request_open {
 
 struct request_send {
 	int id;
-	int sz;
+	int sz;		// -1 表示使用soi
 	char * buffer;
 };
 
@@ -131,21 +139,21 @@ struct request_close {
 };
 
 struct request_listen {
-	int id;
-	int fd;
-	uintptr_t opaque;
-	char host[1];
+	int id;				// socket id
+	int fd;				// listen socket fd
+	uintptr_t opaque;	// source handle
+	char host[1];		// 没用上
 };
 
 struct request_bind {
-	int id;
-	int fd;
-	uintptr_t opaque;
+	int id;				// socket id
+	int fd;				// listen socket fd
+	uintptr_t opaque;	// source handle
 };
 
 struct request_start {
-	int id;
-	uintptr_t opaque;
+	int id;				// socket id
+	uintptr_t opaque;	// source handle
 };
 
 struct request_setopt {
@@ -177,9 +185,9 @@ struct request_udp {
 	U Create UDP socket
 	C set udp address
  */
-
+// socket 相关的io都是由_socket线程处理，所以service都是间接通过发送request请求去操作socket io
 struct request_package {
-	uint8_t header[8];	// 6 bytes dummy
+	uint8_t header[8];	// 6 bytes dummy	[6]是控制命令，见ctrl_cmd，[7]是命令长度，所以命令长度不能超过255
 	union {
 		char buffer[256];
 		struct request_open open;
@@ -242,13 +250,14 @@ socket_keepalive(int fd) {
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));  
 }
 
+// 分配一个可用的socket id
 static int
 reserve_id(struct socket_server *ss) {
 	int i;
 	for (i=0;i<MAX_SOCKET;i++) {
 		int id = ATOM_INC(&(ss->alloc_id));
 		if (id < 0) {
-			id = ATOM_AND(&(ss->alloc_id), 0x7fffffff);
+			id = ATOM_AND(&(ss->alloc_id), 0x7fffffff); // 从头再来
 		}
 		struct socket *s = &ss->slot[HASH_ID(id)];
 		if (s->type == SOCKET_TYPE_INVALID) {
@@ -311,7 +320,7 @@ socket_server_create() {
 	ss->event_index = 0;
 	memset(&ss->soi, 0, sizeof(ss->soi));
 	FD_ZERO(&ss->rfds);
-	assert(ss->recvctrl_fd < FD_SETSIZE);
+	assert(ss->recvctrl_fd < FD_SETSIZE);	// linux下是value，windows下是count http://bbs.chinaunix.net/thread-1791112-1-1.html
 
 	return ss;
 }
@@ -341,6 +350,7 @@ force_close(struct socket_server *ss, struct socket *s, struct socket_message *r
 	free_wb_list(ss,&s->high);
 	free_wb_list(ss,&s->low);
 	if (s->type != SOCKET_TYPE_PACCEPT && s->type != SOCKET_TYPE_PLISTEN) {
+		// NOTE:liuchang 为何这2种排除在外
 		sp_del(ss->event_fd, s->fd);
 	}
 	if (s->type != SOCKET_TYPE_BIND) {
@@ -373,6 +383,7 @@ check_wb_list(struct wb_list *s) {
 	assert(s->tail == NULL);
 }
 
+// 初始化之前占位的socket初始化
 static struct socket *
 new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque, bool add) {
 	struct socket * s = &ss->slot[HASH_ID(id)];
@@ -430,6 +441,7 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		socket_keepalive(sock);
 		sp_nonblocking(sock);
 		status = connect( sock, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
+		// EINPROGRESS表明The socket is nonblocking and the connection cannot be completed immediately. 
 		if ( status != 0 && errno != EINPROGRESS) {
 			close(sock);
 			sock = -1;
@@ -443,13 +455,14 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		goto _failed;
 	}
 
-	ns = new_fd(ss, id, sock, PROTOCOL_TCP, request->opaque, true);
+	ns = new_fd(ss, id, sock, PROTOCOL_TCP, request->opaque, true);	// socket加入监控
 	if (ns == NULL) {
 		close(sock);
 		result->data = "reach skynet socket number limit";
 		goto _failed;
 	}
 
+	// 即使套接字是非阻塞的，如果连接的服务器是在同一台主机，connect通常会立刻建立
 	if(status == 0) {
 		ns->type = SOCKET_TYPE_CONNECTED;
 		struct sockaddr * addr = ai_ptr->ai_addr;
@@ -461,11 +474,11 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		return SOCKET_OPEN;
 	} else {
 		ns->type = SOCKET_TYPE_CONNECTING;
-		sp_write(ss->event_fd, ns->fd, ns, true);
+		sp_write(ss->event_fd, ns->fd, ns, true);	// 监控可写操作，如果触发可写，说明连接建立成功
 	}
 
 	freeaddrinfo( ai_list );
-	return -1;
+	return -1; // 继续直到完成连接
 _failed:
 	freeaddrinfo( ai_list );
 	ss->slot[HASH_ID(id)].type = SOCKET_TYPE_INVALID;
@@ -572,6 +585,7 @@ send_list(struct socket_server *ss, struct socket *s, struct wb_list *list, stru
 	}
 }
 
+// 发送缓冲是否不完整(send a part before)
 static inline int
 list_uncomplete(struct wb_list *s) {
 	struct write_buffer *wb = s->head;
@@ -637,6 +651,7 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_message *r
 	return -1;
 }
 
+// 追加到发送缓冲末尾, n是已发送的字节数
 static struct write_buffer *
 append_sendbuffer_(struct socket_server *ss, struct wb_list *s, struct request_send * request, int size, int n) {
 	struct write_buffer * buf = MALLOC(size);
@@ -665,6 +680,7 @@ append_sendbuffer_udp(struct socket_server *ss, struct socket *s, int priority, 
 	s->wb_size += buf->sz;
 }
 
+// n 是已写(发送)的
 static inline void
 append_sendbuffer(struct socket_server *ss, struct socket *s, struct request_send * request, int n) {
 	struct write_buffer *buf = append_sendbuffer_(ss, &s->high, request, SIZEOF_TCPBUFFER, n);
@@ -694,9 +710,10 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 	int id = request->id;
 	struct socket * s = &ss->slot[HASH_ID(id)];
 	struct send_object so;
-	send_object_init(ss, &so, request->buffer, request->sz);
-	if (s->type == SOCKET_TYPE_INVALID || s->id != id 
-		|| s->type == SOCKET_TYPE_HALFCLOSE
+	send_object_init(ss, &so, request->buffer, request->sz);	// 包装成send_object
+	// 下面几种情况都是可能被动改变，所以不用assert
+	if (s->type == SOCKET_TYPE_INVALID || s->id != id
+		|| s->type == SOCKET_TYPE_HALFCLOSE 
 		|| s->type == SOCKET_TYPE_PACCEPT) {
 		so.free_func(request->buffer);
 		return -1;
@@ -708,7 +725,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 	}
 	if (send_buffer_empty(s) && s->type == SOCKET_TYPE_CONNECTED) {
 		if (s->protocol == PROTOCOL_TCP) {
-			int n = write(s->fd, so.buffer, so.sz);
+			int n = write(s->fd, so.buffer, so.sz);	// 只要connect，不需要accept都可以发送
 			if (n<0) {
 				switch(errno) {
 				case EINTR:
@@ -723,6 +740,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 				}
 			}
 			if (n == so.sz) {
+				// 发送完毕可以释放buffer了
 				so.free_func(request->buffer);
 				return -1;
 			}
@@ -742,7 +760,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 				return -1;
 			}
 		}
-		sp_write(ss->event_fd, s->fd, s, true);
+		sp_write(ss->event_fd, s->fd, s, true); // 等待可写信号
 	} else {
 		if (s->protocol == PROTOCOL_TCP) {
 			if (priority == PRIORITY_LOW) {
@@ -764,7 +782,7 @@ static int
 listen_socket(struct socket_server *ss, struct request_listen * request, struct socket_message *result) {
 	int id = request->id;
 	int listen_fd = request->fd;
-	struct socket *s = new_fd(ss, id, listen_fd, PROTOCOL_TCP, request->opaque, false);
+	struct socket *s = new_fd(ss, id, listen_fd, PROTOCOL_TCP, request->opaque, false);	// false表示暂时不监听此fd上的消息，需要等到start之后才开始监听
 	if (s == NULL) {
 		goto _failed;
 	}
@@ -803,7 +821,8 @@ close_socket(struct socket_server *ss, struct request_close *request, struct soc
 		result->opaque = request->opaque;
 		return SOCKET_CLOSE;
 	}
-	s->type = SOCKET_TYPE_HALFCLOSE;
+	// 缓存中的东西还没发送完
+	s->type = SOCKET_TYPE_HALFCLOSE;	// 只发送，不接收数据了
 
 	return -1;
 }
@@ -838,18 +857,21 @@ start_socket(struct socket_server *ss, struct request_start *request, struct soc
 		return SOCKET_ERROR;
 	}
 	if (s->type == SOCKET_TYPE_PACCEPT || s->type == SOCKET_TYPE_PLISTEN) {
+		// A readable event will  be delivered  when a new connection is 
+		// attempted and you may then call accept() to get a socket for that connection.
+		// 开始监控此fd上消息，对于SOCKET_TYPE_PLISTEN是开始监控客户的连接，对于SOCKET_TYPE_PACCEPT是开始监控客户端发来的数据
 		if (sp_add(ss->event_fd, s->fd, s)) {
 			force_close(ss, s, result);
 			result->data = strerror(errno);
 			return SOCKET_ERROR;
 		}
 		s->type = (s->type == SOCKET_TYPE_PACCEPT) ? SOCKET_TYPE_CONNECTED : SOCKET_TYPE_LISTEN;
-		s->opaque = request->opaque;
+		s->opaque = request->opaque;	// 设置数据接收的服务，哪个服务调用start哪个服务能收到socket消息
 		result->data = "start";
 		return SOCKET_OPEN;
-	} else if (s->type == SOCKET_TYPE_CONNECTED) {
+	} else if (s->type == SOCKET_TYPE_CONNECTED) { // 主要用于socket所属服务切换，之后就是发送给新的s->opaque了
 		// todo: maybe we should send a message SOCKET_TRANSFER to s->opaque
-		s->opaque = request->opaque;
+		s->opaque = request->opaque;	// 改变数据接收的服务，哪个服务调用start哪个服务能收到socket消息
 		result->data = "transfer";
 		return SOCKET_OPEN;
 	}
@@ -941,8 +963,7 @@ set_udp_address(struct socket_server *ss, struct request_setudp *request, struct
 	}
 	return -1;
 }
-
-// return type
+// return type, -1表示不用通知ctx，继续处理
 static int
 ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	int fd = ss->recvctrl_fd;
@@ -956,15 +977,15 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	// ctrl command only exist in local fd, so don't worry about endian.
 	switch (type) {
 	case 'S':
-		return start_socket(ss,(struct request_start *)buffer, result);
+		return start_socket(ss,(struct request_start *)buffer, result);		// SOCKET_OPEN
 	case 'B':
-		return bind_socket(ss,(struct request_bind *)buffer, result);
+		return bind_socket(ss,(struct request_bind *)buffer, result);		// SOCKET_OPEN
 	case 'L':
-		return listen_socket(ss,(struct request_listen *)buffer, result);
+		return listen_socket(ss,(struct request_listen *)buffer, result);	// SOCKET_TYPE_PLISTEN
 	case 'K':
-		return close_socket(ss,(struct request_close *)buffer, result);
+		return close_socket(ss,(struct request_close *)buffer, result);		// SOCKET_CLOSE or -1(半关闭)
 	case 'O':
-		return open_socket(ss, (struct request_open *)buffer, result);
+		return open_socket(ss, (struct request_open *)buffer, result);		// SOCKET_TYPE_CONNECTING/ SOCKET_OPEN
 	case 'X':
 		result->opaque = 0;
 		result->id = 0;
@@ -999,7 +1020,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 static int
 forward_message_tcp(struct socket_server *ss, struct socket *s, struct socket_message * result) {
 	int sz = s->p.size;
-	char * buffer = MALLOC(sz);
+	char * buffer = MALLOC(sz);	// 目标服务收到消息，callback之后删除
 	int n = (int)read(s->fd, buffer, sz);
 	if (n<0) {
 		FREE(buffer);
@@ -1029,6 +1050,7 @@ forward_message_tcp(struct socket_server *ss, struct socket *s, struct socket_me
 		return -1;
 	}
 
+	// 根据情况调整接收缓存大小
 	if (n == sz) {
 		s->p.size *= 2;
 	} else if (sz > MIN_READ_BUFFER && n*2 < sz) {
@@ -1118,7 +1140,7 @@ report_connect(struct socket_server *ss, struct socket *s, struct socket_message
 		result->id = s->id;
 		result->ud = 0;
 		if (send_buffer_empty(s)) {
-			sp_write(ss->event_fd, s->fd, s, false);
+			sp_write(ss->event_fd, s->fd, s, false); // 没有待发送的消息，可以暂时取关写监控
 		}
 		union sockaddr_all u;
 		socklen_t slen = sizeof(u);
@@ -1164,9 +1186,9 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 		return 0;
 	}
 	ns->type = SOCKET_TYPE_PACCEPT;
-	result->opaque = s->opaque;
-	result->id = s->id;
-	result->ud = id;
+	result->opaque = s->opaque;	// ctx
+	result->id = s->id;	// listen socket id
+	result->ud = id;	// connet socket id
 	result->data = NULL;
 
 	void * sin_addr = (u.s.sa_family == AF_INET) ? (void*)&u.v4.sin_addr : (void *)&u.v6.sin6_addr;
@@ -1174,7 +1196,7 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 	char tmp[INET6_ADDRSTRLEN];
 	if (inet_ntop(u.s.sa_family, sin_addr, tmp, sizeof(tmp))) {
 		snprintf(ss->buffer, sizeof(ss->buffer), "%s:%d", tmp, sin_port);
-		result->data = ss->buffer;
+		result->data = ss->buffer; // 对方ip
 	}
 
 	return 1;
@@ -1234,6 +1256,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		}
 		switch (s->type) {
 		case SOCKET_TYPE_CONNECTING:
+			// 有事件到达(可写事件)，说明连接成功
 			return report_connect(ss, s, result);
 		case SOCKET_TYPE_LISTEN: {
 			int ok = report_accept(ss, s, result);
@@ -1286,9 +1309,9 @@ send_request(struct socket_server *ss, struct request_package *request, char typ
 	request->header[6] = (uint8_t)type;
 	request->header[7] = (uint8_t)len;
 	for (;;) {
-		int n = write(ss->sendctrl_fd, &request->header[6], len+2);
+		int n = write(ss->sendctrl_fd, &request->header[6], len+2); // request 本身和 header[6], header[7] fixme，windows非正真管道，不是线程安全的
 		if (n<0) {
-			if (errno != EINTR) {
+			if (errno != EINTR) { // 非中断
 				fprintf(stderr, "socket-server : send ctrl command error %s.\n", strerror(errno));
 			}
 			continue;
@@ -1399,7 +1422,7 @@ static int
 do_bind(const char *host, int port, int protocol, int *family) {
 	int fd;
 	int status;
-	int reuse = 1;
+	int reuse = 1;// http://stackoverflow.com/questions/14388706/socket-options-so-reuseaddr-and-so-reuseport-how-do-they-differ-do-they-mean-t
 	struct addrinfo ai_hints;
 	struct addrinfo *ai_list = NULL;
 	char portstr[16];

@@ -26,8 +26,8 @@ struct buffer_node {
 };
 
 struct socket_buffer {
-	int size;
-	int offset;
+	int size;					// 此socket接受到的数据大小
+	int offset;					// 当前buffer_node的offset
 	struct buffer_node *head;
 	struct buffer_node *tail;
 };
@@ -47,6 +47,7 @@ lfreepool(lua_State *L) {
 	return 0;
 }
 
+// 创建一个大小为sz的(buffer_node *)的userdata
 static int
 lnewpool(lua_State *L, int sz) {
 	struct buffer_node * pool = lua_newuserdata(L, sizeof(struct buffer_node) * sz);
@@ -61,7 +62,7 @@ lnewpool(lua_State *L, int sz) {
 		lua_pushcfunction(L, lfreepool);
 		lua_setfield(L, -2, "__gc");
 	}
-	lua_setmetatable(L, -2);
+	lua_setmetatable(L, -2);	// -2为new userdata
 	return 1;
 }
 
@@ -77,6 +78,7 @@ lnewbuffer(lua_State *L) {
 }
 
 /*
+	脚本收到数据用c保存
 	userdata send_buffer
 	table pool
 	lightuserdata msg
@@ -143,6 +145,7 @@ lpushbuffer(lua_State *L) {
 	return 1;
 }
 
+// 读完了，可以释放了
 static void
 return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	struct buffer_node *free_node = sb->head;
@@ -151,6 +154,7 @@ return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	if (sb->head == NULL) {
 		sb->tail = NULL;
 	}
+	// 释放的节点挂到buffer_pool[1]中去
 	lua_rawgeti(L,pool,1);
 	free_node->next = lua_touserdata(L,-1);
 	lua_pop(L,1);
@@ -162,6 +166,7 @@ return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	lua_rawseti(L, pool, 1);
 }
 
+// skip 表示sz大小中有多少是被忽略的，不用加到缓存中的
 static void
 pop_lstring(lua_State *L, struct socket_buffer *sb, int sz, int skip) {
 	struct buffer_node * current = sb->head;
@@ -179,7 +184,7 @@ pop_lstring(lua_State *L, struct socket_buffer *sb, int sz, int skip) {
 	luaL_Buffer b;
 	luaL_buffinit(L, &b);
 	for (;;) {
-		int bytes = current->sz - sb->offset;
+		int bytes = current->sz - sb->offset;	// 先把此node剩余的数据读完
 		if (bytes >= sz) {
 			if (sz > skip) {
 				luaL_addlstring(&b, current->msg + sb->offset, sz - skip);
@@ -191,14 +196,14 @@ pop_lstring(lua_State *L, struct socket_buffer *sb, int sz, int skip) {
 			break;
 		}
 		int real_sz = sz - skip;
-		if (real_sz > 0) {
+		if (real_sz > 0) {	// 当前节点的全读光
 			luaL_addlstring(&b, current->msg + sb->offset, (real_sz < bytes) ? real_sz : bytes);
 		}
 		return_free_node(L,2,sb);
-		sz-=bytes;
+		sz-=bytes;	// 还需要读sz
 		if (sz==0)
 			break;
-		current = sb->head;
+		current = sb->head;	// 读下一个节点
 		assert(current);
 	}
 	luaL_pushresult(&b);
@@ -236,6 +241,7 @@ lpopbuffer(lua_State *L) {
 	}
 	luaL_checktype(L,2,LUA_TTABLE);
 	int sz = luaL_checkinteger(L,3);
+	// 当前socket还没有收到这么多数据
 	if (sb->size < sz || sz == 0) {
 		lua_pushnil(L);
 	} else {
@@ -382,7 +388,7 @@ lunpack(lua_State *L) {
 	lua_pushinteger(L, message->type);
 	lua_pushinteger(L, message->id);
 	lua_pushinteger(L, message->ud);
-	if (message->buffer == NULL) {
+	if (message->buffer == NULL) {		// 见forward_message中的padding
 		lua_pushlstring(L, (char *)(message+1),size - sizeof(*message));
 	} else {
 		lua_pushlightuserdata(L, message->buffer);
@@ -551,7 +557,7 @@ get_buffer(lua_State *L, int index, int *sz) {
 static int
 lsend(lua_State *L) {
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
-	int id = luaL_checkinteger(L, 1);
+	int id = luaL_checkinteger(L, 1);	// socket id
 	int sz = 0;
 	void *buffer = get_buffer(L, 2, &sz);
 	int err = skynet_socket_send(ctx, id, buffer, sz);
@@ -692,6 +698,7 @@ luaopen_socketdriver(lua_State *L) {
 		{ NULL, NULL },
 	};
 	luaL_newlib(L,l);
+	// 下面这些函数注册带upvalue:ctx
 	luaL_Reg l2[] = {
 		{ "connect", lconnect },
 		{ "close", lclose },

@@ -1,0 +1,360 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{73DE69EE-221B-4717-973A-0F734E113CF0}"
+	ProjectSection(SolutionItems) = preProject
+		examples\abort.lua = examples\abort.lua
+		examples\agent.lua = examples\agent.lua
+		examples\client.lua = examples\client.lua
+		examples\cluster1.lua = examples\cluster1.lua
+		examples\cluster2.lua = examples\cluster2.lua
+		examples\clustername.lua = examples\clustername.lua
+		examples\config = examples\config
+		examples\config.c1 = examples\config.c1
+		examples\config.c2 = examples\config.c2
+		examples\config.login = examples\config.login
+		examples\config.mc = examples\config.mc
+		examples\config.mysql = examples\config.mysql
+		examples\config.userlog = examples\config.userlog
+		examples\config_log = examples\config_log
+		examples\globallog.lua = examples\globallog.lua
+		examples\injectlaunch.lua = examples\injectlaunch.lua
+		examples\main.lua = examples\main.lua
+		examples\main_log.lua = examples\main_log.lua
+		examples\main_mysql.lua = examples\main_mysql.lua
+		examples\preload.lua = examples\preload.lua
+		examples\proto.lua = examples\proto.lua
+		examples\protoloader.lua = examples\protoloader.lua
+		examples\share.lua = examples\share.lua
+		examples\simpledb.lua = examples\simpledb.lua
+		examples\simplemonitor.lua = examples\simplemonitor.lua
+		examples\simpleweb.lua = examples\simpleweb.lua
+		examples\userlog.lua = examples\userlog.lua
+		examples\watchdog.lua = examples\watchdog.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib", "lualib", "{4458D408-D921-4D64-ADA4-EBA4E7C6D245}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\cluster.lua = lualib\cluster.lua
+		lualib\datacenter.lua = lualib\datacenter.lua
+		lualib\dns.lua = lualib\dns.lua
+		lualib\loader.lua = lualib\loader.lua
+		lualib\md5.lua = lualib\md5.lua
+		lualib\mongo.lua = lualib\mongo.lua
+		lualib\mqueue.lua = lualib\mqueue.lua
+		lualib\multicast.lua = lualib\multicast.lua
+		lualib\mysql.lua = lualib\mysql.lua
+		lualib\redis.lua = lualib\redis.lua
+		lualib\sharedata.lua = lualib\sharedata.lua
+		lualib\sharemap.lua = lualib\sharemap.lua
+		lualib\skynet.lua = lualib\skynet.lua
+		lualib\snax.lua = lualib\snax.lua
+		lualib\socket.lua = lualib\socket.lua
+		lualib\socketchannel.lua = lualib\socketchannel.lua
+		lualib\sproto.lua = lualib\sproto.lua
+		lualib\sprotoloader.lua = lualib\sprotoloader.lua
+		lualib\sprotoparser.lua = lualib\sprotoparser.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib-src", "lualib-src", "{92C55FB9-0DD3-4DE0-81AC-BF0A117942AF}"
+	ProjectSection(SolutionItems) = preProject
+		lualib-src\lsha1.c = lualib-src\lsha1.c
+		lualib-src\lua-bson.c = lualib-src\lua-bson.c
+		lualib-src\lua-clientsocket.c = lualib-src\lua-clientsocket.c
+		lualib-src\lua-cluster.c = lualib-src\lua-cluster.c
+		lualib-src\lua-crypt.c = lualib-src\lua-crypt.c
+		lualib-src\lua-debugchannel.c = lualib-src\lua-debugchannel.c
+		lualib-src\lua-memory.c = lualib-src\lua-memory.c
+		lualib-src\lua-mongo.c = lualib-src\lua-mongo.c
+		lualib-src\lua-multicast.c = lualib-src\lua-multicast.c
+		lualib-src\lua-mysqlaux.c = lualib-src\lua-mysqlaux.c
+		lualib-src\lua-netpack.c = lualib-src\lua-netpack.c
+		lualib-src\lua-profile.c = lualib-src\lua-profile.c
+		lualib-src\lua-seri.c = lualib-src\lua-seri.c
+		lualib-src\lua-seri.h = lualib-src\lua-seri.h
+		lualib-src\lua-sharedata.c = lualib-src\lua-sharedata.c
+		lualib-src\lua-skynet.c = lualib-src\lua-skynet.c
+		lualib-src\lua-socket.c = lualib-src\lua-socket.c
+		lualib-src\lua-stm.c = lualib-src\lua-stm.c
+		lualib-src\lua_mysqlaux.c = lualib-src\lua_mysqlaux.c
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service", "service", "{15E53223-24FD-4505-8332-180C2B6233CD}"
+	ProjectSection(SolutionItems) = preProject
+		service\bootstrap.lua = service\bootstrap.lua
+		service\cdummy.lua = service\cdummy.lua
+		service\clusterd.lua = service\clusterd.lua
+		service\clusterproxy.lua = service\clusterproxy.lua
+		service\cmaster.lua = service\cmaster.lua
+		service\cmemory.lua = service\cmemory.lua
+		service\console.lua = service\console.lua
+		service\cslave.lua = service\cslave.lua
+		service\datacenterd.lua = service\datacenterd.lua
+		service\dbg.lua = service\dbg.lua
+		service\debug_agent.lua = service\debug_agent.lua
+		service\debug_console.lua = service\debug_console.lua
+		service\gate.lua = service\gate.lua
+		service\launcher.lua = service\launcher.lua
+		service\multicastd.lua = service\multicastd.lua
+		service\service_mgr.lua = service\service_mgr.lua
+		service\sharedatad.lua = service\sharedatad.lua
+		service\snaxd.lua = service\snaxd.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service-src", "service-src", "{231CCE9A-E800-4223-B272-DA7C433548D9}"
+	ProjectSection(SolutionItems) = preProject
+		service-src\databuffer.h = service-src\databuffer.h
+		service-src\hashid.h = service-src\hashid.h
+		service-src\service_gate.c = service-src\service_gate.c
+		service-src\service_harbor.c = service-src\service_harbor.c
+		service-src\service_logger.c = service-src\service_logger.c
+		service-src\service_snlua.c = service-src\service_snlua.c
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "skynet-src", "skynet-src", "{EE70279E-10E9-4EE6-A642-93522E5608DD}"
+	ProjectSection(SolutionItems) = preProject
+		skynet-src\atomic.h = skynet-src\atomic.h
+		skynet-src\luashrtbl.h = skynet-src\luashrtbl.h
+		skynet-src\malloc_hook.c = skynet-src\malloc_hook.c
+		skynet-src\malloc_hook.h = skynet-src\malloc_hook.h
+		skynet-src\rwlock.h = skynet-src\rwlock.h
+		skynet-src\skynet.h = skynet-src\skynet.h
+		skynet-src\skynet_daemon.c = skynet-src\skynet_daemon.c
+		skynet-src\skynet_daemon.h = skynet-src\skynet_daemon.h
+		skynet-src\skynet_env.c = skynet-src\skynet_env.c
+		skynet-src\skynet_env.h = skynet-src\skynet_env.h
+		skynet-src\skynet_error.c = skynet-src\skynet_error.c
+		skynet-src\skynet_handle.c = skynet-src\skynet_handle.c
+		skynet-src\skynet_handle.h = skynet-src\skynet_handle.h
+		skynet-src\skynet_harbor.c = skynet-src\skynet_harbor.c
+		skynet-src\skynet_harbor.h = skynet-src\skynet_harbor.h
+		skynet-src\skynet_imp.h = skynet-src\skynet_imp.h
+		skynet-src\skynet_log.c = skynet-src\skynet_log.c
+		skynet-src\skynet_log.h = skynet-src\skynet_log.h
+		skynet-src\skynet_main.c = skynet-src\skynet_main.c
+		skynet-src\skynet_malloc.h = skynet-src\skynet_malloc.h
+		skynet-src\skynet_module.c = skynet-src\skynet_module.c
+		skynet-src\skynet_module.h = skynet-src\skynet_module.h
+		skynet-src\skynet_monitor.c = skynet-src\skynet_monitor.c
+		skynet-src\skynet_monitor.h = skynet-src\skynet_monitor.h
+		skynet-src\skynet_mq.c = skynet-src\skynet_mq.c
+		skynet-src\skynet_mq.h = skynet-src\skynet_mq.h
+		skynet-src\skynet_server.c = skynet-src\skynet_server.c
+		skynet-src\skynet_server.h = skynet-src\skynet_server.h
+		skynet-src\skynet_socket.c = skynet-src\skynet_socket.c
+		skynet-src\skynet_socket.h = skynet-src\skynet_socket.h
+		skynet-src\skynet_start.c = skynet-src\skynet_start.c
+		skynet-src\skynet_timer.c = skynet-src\skynet_timer.c
+		skynet-src\skynet_timer.h = skynet-src\skynet_timer.h
+		skynet-src\socket_epoll.h = skynet-src\socket_epoll.h
+		skynet-src\socket_kqueue.h = skynet-src\socket_kqueue.h
+		skynet-src\socket_poll.h = skynet-src\socket_poll.h
+		skynet-src\socket_server.c = skynet-src\socket_server.c
+		skynet-src\socket_server.h = skynet-src\socket_server.h
+		skynet-src\spinlock.h = skynet-src\spinlock.h
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{574844D0-D5EB-43B2-AE7E-B75D3D0AC184}"
+	ProjectSection(SolutionItems) = preProject
+		test\pingserver.lua = test\pingserver.lua
+		test\sharemap.sp = test\sharemap.sp
+		test\testcoroutine.lua = test\testcoroutine.lua
+		test\testdatacenter.lua = test\testdatacenter.lua
+		test\testdeadcall.lua = test\testdeadcall.lua
+		test\testdeadloop.lua = test\testdeadloop.lua
+		test\testdns.lua = test\testdns.lua
+		test\testecho.lua = test\testecho.lua
+		test\testharborlink.lua = test\testharborlink.lua
+		test\testhttp.lua = test\testhttp.lua
+		test\testmongodb.lua = test\testmongodb.lua
+		test\testmulticast.lua = test\testmulticast.lua
+		test\testmulticast2.lua = test\testmulticast2.lua
+		test\testmysql.lua = test\testmysql.lua
+		test\testoverload.lua = test\testoverload.lua
+		test\testping.lua = test\testping.lua
+		test\testpipeline.lua = test\testpipeline.lua
+		test\testqueue.lua = test\testqueue.lua
+		test\testredis.lua = test\testredis.lua
+		test\testredis2.lua = test\testredis2.lua
+		test\testresponse.lua = test\testresponse.lua
+		test\testsha.lua = test\testsha.lua
+		test\testsm.lua = test\testsm.lua
+		test\testsocket.lua = test\testsocket.lua
+		test\teststm.lua = test\teststm.lua
+		test\testterm.lua = test\testterm.lua
+		test\testtimer.lua = test\testtimer.lua
+		test\testudp.lua = test\testudp.lua
+		test\time.lua = test\time.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "login", "login", "{AB140B96-BDD5-40B4-BC17-19286EFF4D7F}"
+	ProjectSection(SolutionItems) = preProject
+		examples\login\client.lua = examples\login\client.lua
+		examples\login\gated.lua = examples\login\gated.lua
+		examples\login\logind.lua = examples\login\logind.lua
+		examples\login\main.lua = examples\login\main.lua
+		examples\login\msgagent.lua = examples\login\msgagent.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "http", "http", "{951E79C7-FBAC-49AD-95C9-3B92A76866F4}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\http\httpc.lua = lualib\http\httpc.lua
+		lualib\http\httpd.lua = lualib\http\httpd.lua
+		lualib\http\internal.lua = lualib\http\internal.lua
+		lualib\http\sockethelper.lua = lualib\http\sockethelper.lua
+		lualib\http\url.lua = lualib\http\url.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sharedata", "sharedata", "{918918D0-34F9-4653-88A8-23DDBD462F6D}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\sharedata\corelib.lua = lualib\sharedata\corelib.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "skynet", "skynet", "{A7E1BCB9-DF95-4B17-8D85-8F3696BB1558}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\coroutine.lua = lualib\skynet\coroutine.lua
+		lualib\skynet\debug.lua = lualib\skynet\debug.lua
+		lualib\skynet\harbor.lua = lualib\skynet\harbor.lua
+		lualib\skynet\inject.lua = lualib\skynet\inject.lua
+		lualib\skynet\injectcode.lua = lualib\skynet\injectcode.lua
+		lualib\skynet\manager.lua = lualib\skynet\manager.lua
+		lualib\skynet\queue.lua = lualib\skynet\queue.lua
+		lualib\skynet\remotedebug.lua = lualib\skynet\remotedebug.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "snax", "snax", "{380F61C7-B540-4455-9DAB-F6EBC33B3758}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\snax\gateserver.lua = lualib\snax\gateserver.lua
+		lualib\snax\hotfix.lua = lualib\snax\hotfix.lua
+		lualib\snax\interface.lua = lualib\snax\interface.lua
+		lualib\snax\loginserver.lua = lualib\snax\loginserver.lua
+		lualib\snax\msgserver.lua = lualib\snax\msgserver.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sproto", "sproto", "{9F499D04-3A32-4E8E-9023-6B91287F828B}"
+	ProjectSection(SolutionItems) = preProject
+		lualib-src\sproto\lsproto.c = lualib-src\sproto\lsproto.c
+		lualib-src\sproto\msvcint.h = lualib-src\sproto\msvcint.h
+		lualib-src\sproto\README = lualib-src\sproto\README
+		lualib-src\sproto\README.md = lualib-src\sproto\README.md
+		lualib-src\sproto\sproto.c = lualib-src\sproto\sproto.c
+		lualib-src\sproto\sproto.h = lualib-src\sproto\sproto.h
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "3rd", "3rd", "{48189DD2-976E-41E3-870F-EFA871E4A4C6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lpeg", "lpeg", "{C067BE5F-ABD3-40D2-B3C1-75CA8FEF751E}"
+	ProjectSection(SolutionItems) = preProject
+		3rd\lpeg\HISTORY = 3rd\lpeg\HISTORY
+		3rd\lpeg\lpcap.c = 3rd\lpeg\lpcap.c
+		3rd\lpeg\lpcap.h = 3rd\lpeg\lpcap.h
+		3rd\lpeg\lpcode.c = 3rd\lpeg\lpcode.c
+		3rd\lpeg\lpcode.h = 3rd\lpeg\lpcode.h
+		3rd\lpeg\lpeg-128.gif = 3rd\lpeg\lpeg-128.gif
+		3rd\lpeg\lpeg.html = 3rd\lpeg\lpeg.html
+		3rd\lpeg\lpprint.c = 3rd\lpeg\lpprint.c
+		3rd\lpeg\lpprint.h = 3rd\lpeg\lpprint.h
+		3rd\lpeg\lptree.c = 3rd\lpeg\lptree.c
+		3rd\lpeg\lptree.h = 3rd\lpeg\lptree.h
+		3rd\lpeg\lptypes.h = 3rd\lpeg\lptypes.h
+		3rd\lpeg\lpvm.c = 3rd\lpeg\lpvm.c
+		3rd\lpeg\lpvm.h = 3rd\lpeg\lpvm.h
+		3rd\lpeg\makefile = 3rd\lpeg\makefile
+		3rd\lpeg\re.html = 3rd\lpeg\re.html
+		3rd\lpeg\re.lua = 3rd\lpeg\re.lua
+		3rd\lpeg\test.lua = 3rd\lpeg\test.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lua", "lua", "{786AC8F8-9371-4C81-9859-B092D87EEFB3}"
+	ProjectSection(SolutionItems) = preProject
+		3rd\lua\lapi.c = 3rd\lua\lapi.c
+		3rd\lua\lapi.h = 3rd\lua\lapi.h
+		3rd\lua\lauxlib.c = 3rd\lua\lauxlib.c
+		3rd\lua\lauxlib.h = 3rd\lua\lauxlib.h
+		3rd\lua\lbaselib.c = 3rd\lua\lbaselib.c
+		3rd\lua\lbitlib.c = 3rd\lua\lbitlib.c
+		3rd\lua\lcode.c = 3rd\lua\lcode.c
+		3rd\lua\lcode.h = 3rd\lua\lcode.h
+		3rd\lua\lcorolib.c = 3rd\lua\lcorolib.c
+		3rd\lua\lctype.c = 3rd\lua\lctype.c
+		3rd\lua\lctype.h = 3rd\lua\lctype.h
+		3rd\lua\ldblib.c = 3rd\lua\ldblib.c
+		3rd\lua\ldebug.c = 3rd\lua\ldebug.c
+		3rd\lua\ldebug.h = 3rd\lua\ldebug.h
+		3rd\lua\ldo.c = 3rd\lua\ldo.c
+		3rd\lua\ldo.h = 3rd\lua\ldo.h
+		3rd\lua\ldump.c = 3rd\lua\ldump.c
+		3rd\lua\lfunc.c = 3rd\lua\lfunc.c
+		3rd\lua\lfunc.h = 3rd\lua\lfunc.h
+		3rd\lua\lgc.c = 3rd\lua\lgc.c
+		3rd\lua\lgc.h = 3rd\lua\lgc.h
+		3rd\lua\linit.c = 3rd\lua\linit.c
+		3rd\lua\liolib.c = 3rd\lua\liolib.c
+		3rd\lua\llex.c = 3rd\lua\llex.c
+		3rd\lua\llex.h = 3rd\lua\llex.h
+		3rd\lua\llimits.h = 3rd\lua\llimits.h
+		3rd\lua\lmathlib.c = 3rd\lua\lmathlib.c
+		3rd\lua\lmem.c = 3rd\lua\lmem.c
+		3rd\lua\lmem.h = 3rd\lua\lmem.h
+		3rd\lua\loadlib.c = 3rd\lua\loadlib.c
+		3rd\lua\lobject.c = 3rd\lua\lobject.c
+		3rd\lua\lobject.h = 3rd\lua\lobject.h
+		3rd\lua\lopcodes.c = 3rd\lua\lopcodes.c
+		3rd\lua\lopcodes.h = 3rd\lua\lopcodes.h
+		3rd\lua\loslib.c = 3rd\lua\loslib.c
+		3rd\lua\lparser.c = 3rd\lua\lparser.c
+		3rd\lua\lparser.h = 3rd\lua\lparser.h
+		3rd\lua\lprefix.h = 3rd\lua\lprefix.h
+		3rd\lua\lstate.c = 3rd\lua\lstate.c
+		3rd\lua\lstate.h = 3rd\lua\lstate.h
+		3rd\lua\lstring.c = 3rd\lua\lstring.c
+		3rd\lua\lstring.h = 3rd\lua\lstring.h
+		3rd\lua\lstrlib.c = 3rd\lua\lstrlib.c
+		3rd\lua\ltable.c = 3rd\lua\ltable.c
+		3rd\lua\ltable.h = 3rd\lua\ltable.h
+		3rd\lua\ltablib.c = 3rd\lua\ltablib.c
+		3rd\lua\ltm.c = 3rd\lua\ltm.c
+		3rd\lua\ltm.h = 3rd\lua\ltm.h
+		3rd\lua\lua.c = 3rd\lua\lua.c
+		3rd\lua\lua.h = 3rd\lua\lua.h
+		3rd\lua\lua.hpp = 3rd\lua\lua.hpp
+		3rd\lua\luac.c = 3rd\lua\luac.c
+		3rd\lua\luaconf.h = 3rd\lua\luaconf.h
+		3rd\lua\lualib.h = 3rd\lua\lualib.h
+		3rd\lua\lundump.c = 3rd\lua\lundump.c
+		3rd\lua\lundump.h = 3rd\lua\lundump.h
+		3rd\lua\lutf8lib.c = 3rd\lua\lutf8lib.c
+		3rd\lua\lvm.c = 3rd\lua\lvm.c
+		3rd\lua\lvm.h = 3rd\lua\lvm.h
+		3rd\lua\lzio.c = 3rd\lua\lzio.c
+		3rd\lua\lzio.h = 3rd\lua\lzio.h
+		3rd\lua\Makefile = 3rd\lua\Makefile
+		3rd\lua\README = 3rd\lua\README
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lua-md5", "lua-md5", "{383E12A6-E797-4895-9604-F5BCA014D8F0}"
+	ProjectSection(SolutionItems) = preProject
+		3rd\lua-md5\compat-5.2.c = 3rd\lua-md5\compat-5.2.c
+		3rd\lua-md5\compat-5.2.h = 3rd\lua-md5\compat-5.2.h
+		3rd\lua-md5\md5.c = 3rd\lua-md5\md5.c
+		3rd\lua-md5\md5.h = 3rd\lua-md5\md5.h
+		3rd\lua-md5\md5lib.c = 3rd\lua-md5\md5lib.c
+		3rd\lua-md5\README = 3rd\lua-md5\README
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{AB140B96-BDD5-40B4-BC17-19286EFF4D7F} = {73DE69EE-221B-4717-973A-0F734E113CF0}
+		{951E79C7-FBAC-49AD-95C9-3B92A76866F4} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{918918D0-34F9-4653-88A8-23DDBD462F6D} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{A7E1BCB9-DF95-4B17-8D85-8F3696BB1558} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{380F61C7-B540-4455-9DAB-F6EBC33B3758} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{9F499D04-3A32-4E8E-9023-6B91287F828B} = {92C55FB9-0DD3-4DE0-81AC-BF0A117942AF}
+		{C067BE5F-ABD3-40D2-B3C1-75CA8FEF751E} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
+		{786AC8F8-9371-4C81-9859-B092D87EEFB3} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
+		{383E12A6-E797-4895-9604-F5BCA014D8F0} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
+	EndGlobalSection
+EndGlobal

@@ -15,6 +15,7 @@ local user_login = {}
 
 -- 如果验证通过，需要返回用户希望进入的登陆点（登陆点可以是包含在 token 内由用户自行决定,也可以在这里实现一个负载均衡器来选择）；以及用户名。
 -- login step 4.1: L 校验token 的合法性（此处有可能需要 L 和 A 做一次确认）。
+-- slave
 function server.auth_handler(token)
 	-- the token is base64(user)@base64(server):base64(password)
 	local user, server, password = token:match("([^@]+)@([^:]+):(.+)")
@@ -27,6 +28,7 @@ end
 
 -- 处理当用户已经验证通过后，该如何通知具体的登陆点（server ）
 -- 框架会交给你用户名（uid）和已经安全交换到的通讯密钥。你需要把它们交给登陆点，并得到确认（等待登陆点准备好后）才可以返回。
+-- master
 function server.login_handler(server, uid, secret)
 	print(string.format("%s@%s is login, secret is %s", uid, server, crypt.hexencode(secret)))
 	local gameserver = assert(server_list[server], "Unknown server") -- login step 4.2: L 校验登陆点是否存在
@@ -60,6 +62,7 @@ function CMD.logout(uid, subid)
 	end
 end
 
+-- master
 function server.command_handler(command, ...)
 	local f = assert(CMD[command])
 	return f(...)

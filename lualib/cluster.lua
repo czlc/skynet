@@ -20,6 +20,7 @@ function cluster.reload()
 	skynet.call(clusterd, "lua", "reload")
 end
 
+-- 生成一个本地代理。之后，就可以像访问一个本地服务一样，和这个远程服务通讯。
 function cluster.proxy(node, name)
 	return skynet.call(clusterd, "lua", "proxy", node, name)
 end

@@ -48,7 +48,7 @@ local session_coroutine_address = {}	-- [co] = addr，等待回应对方的地址，和sessi
 local session_response = {}				-- [co] = closure，本服务待回应的请求，调用closure的时候会回应 http://blog.codingnow.com/2014/07/skynet_response.html
 local unresponse = {}
 
-local wakeup_session = {}				-- [co] = true 待唤醒的协程
+local wakeup_session = {}				-- [co] = true 已经醒来的协程等待执行
 local sleep_session = {}				-- [co] = true 睡眠中的协程
 
 local watching_service = {}				-- 所关注的服务，[co] = ref
@@ -545,7 +545,7 @@ end
 
 function skynet.dispatch_message(...)
 	local succ, err = pcall(raw_dispatch_message,...)
-	while true do
+	while true do	-- 为何放在此处，如果重载了dispatch_message则fork的将不会被执行？
 		local key,co = next(fork_queue)
 		if co == nil then
 			break
@@ -707,7 +707,7 @@ function skynet.init_service(start)
 end
 
 function skynet.start(start_func)
-	c.callback(skynet.dispatch_message)
+	c.callback(skynet.dispatch_message)	-- 设置消息分发函数
 	skynet.timeout(0, function()
 		skynet.init_service(start_func)
 	end)

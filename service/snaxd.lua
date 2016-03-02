@@ -1,3 +1,5 @@
+-- snaxd是一个服务包装器，它通过解析snax_name所指定的服务获得其接口
+-- 并对接口进行包装，使得被包装的服务不需要关心snax框架
 local skynet = require "skynet"
 local c = require "skynet.core"
 local snax_interface = require "snax.interface"

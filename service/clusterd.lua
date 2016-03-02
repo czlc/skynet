@@ -4,7 +4,7 @@ local socket = require "socket"
 local cluster = require "cluster.core"
 
 local config_name = skynet.getenv "cluster"
-local node_address = {}
+local node_address = {}		-- [node_name] = ip:port
 local node_session = {}
 local command = {}
 

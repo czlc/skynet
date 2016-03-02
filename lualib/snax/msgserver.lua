@@ -1,3 +1,4 @@
+-- 和gate.lua不同，它是管理短连接
 local skynet = require "skynet"
 local gateserver = require "snax.gateserver"
 local netpack = require "netpack"
@@ -141,6 +142,7 @@ function server.start(conf)
 	end
 
 	-- 如果你希望在监听端口打开的时候，做一些初始化操作，可以提供 open 这个方法。source 是请求来源地址，conf 是开启 gate 服务的参数表。
+	-- 见main.lua, conf = {	port = 8888,maxclient = 64,	servername = "sample",}
 	function handler.open(source, gateconf)
 		local servername = assert(gateconf.servername)
 		return conf.register_handler(servername)

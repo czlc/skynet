@@ -1,3 +1,4 @@
+-- 相当于是agent的manager
 local skynet = require "skynet"
 local netpack = require "netpack"
 

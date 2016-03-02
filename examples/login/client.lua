@@ -57,11 +57,14 @@ local readline = unpack_f(unpack_line)
 local challenge = crypt.base64decode(readline())
 
 local clientkey = crypt.randomkey()
+-- Protocol:2. Client->Server : base64(8bytes handshake client key)
 writeline(fd, crypt.base64encode(crypt.dhexchange(clientkey))) -- 即使截获这个值，也反推不出clientkey(计算对数相当困难)，从而也无法计算secret
+-- Protocol:5. Server/Client secret := DH-Secret(client key/server key)
 local secret = crypt.dhsecret(crypt.base64decode(readline()), clientkey)
 
 print("sceret is ", crypt.hexencode(secret))
 
+-- Protocol:6. Client->Server : base64(HMAC(challenge, secret))
 local hmac = crypt.hmac64(challenge, secret)
 writeline(fd, crypt.base64encode(hmac)) -- login step 3:C 和 L 交换后续通讯用的密钥 secret ，并立刻验证。
 
@@ -79,6 +82,7 @@ local function encode_token(token)
 		crypt.base64encode(token.pass))
 end
 
+-- Protocl:7. Client->Server : DES(secret, base64(token))
 local etoken = crypt.desencode(secret, encode_token(token))
 local b = crypt.base64encode(etoken)
 writeline(fd, crypt.base64encode(etoken)) -- login step 2:C 将他希望登陆的登陆点 G1 (或其它登陆点，可由系统设计的负载均衡器来选择）以及 step 1 获得的 token 一起发送给 L 。

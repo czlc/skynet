@@ -1,4 +1,4 @@
--- loginserver是一个框架模板，一些具体的逻辑实现在login(conf)中的conf中
+-- loginserver是一个框架模板(也可以理解为service的基类，具体的处理函数由login传入的参数处理)，一些具体的逻辑实现在login(conf)中的conf中
 local skynet = require "skynet"
 require "skynet.manager"
 local socket = require "socket"
@@ -53,7 +53,7 @@ local function launch_slave(auth_handler)
 		-- set socket buffer limit (8K)
 		-- If the attacker send large package, close the socket
 		socket.limit(fd, 8192)
-
+		-- Protocol:1. Server->Client : base64(8bytes random challenge)
 		local challenge = crypt.randomkey()
 		write("auth", fd, crypt.base64encode(challenge).."\n")
 
@@ -62,9 +62,11 @@ local function launch_slave(auth_handler)
 		if #clientkey ~= 8 then
 			error "Invalid client key"
 		end
+		-- Protocol:3. Server: Gen a 8bytes handshake server key
 		local serverkey = crypt.randomkey()
+		-- Protocol:4. Server->Client : base64(DH-Exchange(server key))
 		write("auth", fd, crypt.base64encode(crypt.dhexchange(serverkey)).."\n")
-
+		-- Protocol:5. Server/Client secret := DH-Secret(client key/server key)
 		local secret = crypt.dhsecret(clientkey, serverkey)
 
 		local response = assert_socket("auth", socket.readline(fd), fd)
@@ -76,9 +78,9 @@ local function launch_slave(auth_handler)
 		end
 
 		local etoken = assert_socket("auth", socket.readline(fd),fd)
-
+		
 		local token = crypt.desdecode(secret, crypt.base64decode(etoken))
-
+		-- Protocol:8. Server : call auth_handler(token) -> server, uid (A user defined method)
 		local ok, server, uid =  pcall(auth_handler,token)
 
 		return ok, server, uid, secret
@@ -116,6 +118,7 @@ end
 
 local user_login = {}
 
+-- s为slave 服务的id
 local function accept(conf, s, fd, addr)
 	-- call slave auth
 	local ok, server, uid, secret = skynet.call(s, "lua",  fd, addr)
@@ -137,10 +140,12 @@ local function accept(conf, s, fd, addr)
 		user_login[uid] = true
 	end
 
+	-- Protocol:9. Server : call login_handler(server, uid, secret) ->subid (A user defined method)
 	local ok, err = pcall(conf.login_handler, server, uid, secret)
 	-- unlock login
 	user_login[uid] = nil
 
+	-- Protocol:10. Server->Client : 200 base64(subid)
 	if ok then
 		err = err or ""
 		write("response 200",fd,  "200 "..crypt.base64encode(err).."\n")   -- login step 8: L 将子 id 发送给 C 。子 id 多用于多重登陆（允许同一个账号同时登陆多次），一个 userid 和一个 subid 一起才是一次登陆的 username 。而每个 username 都对应有唯一的 secret 。
@@ -164,7 +169,7 @@ local function launch_master(conf)
 	end)
 
 	for i=1,instance do
-		table.insert(slave, skynet.newservice(SERVICE_NAME)) -- 启动几个slave服务用于负载均衡
+		table.insert(slave, skynet.newservice(SERVICE_NAME)) -- 启动几个slave服务用于负载均衡,SERVICE_NAME在loader.lua中设置
 	end
 
 	skynet.error(string.format("login server listen at : %s %d", host, port))

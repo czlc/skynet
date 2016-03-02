@@ -15,15 +15,15 @@ skynet.register_protocol {
 	unpack = skynet.unpack,
 }
 
--- "pingserver"
--- 获得一个snax service的接口，它包括accept、response、system接口
+-- 获得一个snax service的接口，并按规则存放
 function snax.interface(name)
 	if typeclass[name] then
 		return typeclass[name]
 	end
 
-	local si = snax_interface(name, G)
+	local si = snax_interface(name, G)	-- 分析name所指定的服务的接口
 
+	-- 得到的接口按规则存放
 	local ret = {
 		name = name,
 		accept = {},	-- accept 前缀表示这个方法没有回应
@@ -74,7 +74,8 @@ local function gen_req(type, handle)
 		end })
 end
 
--- type是按[group][name]->id的查询table
+-- 对调用接口的封装，拥有post和req接口
+-- 注意snaxd是被被调用者的封装有accept和respone接口
 local function wrapper(handle, name, type)
 	return setmetatable ({
 		post = gen_post(type, handle),	-- 使得post.xxx函数调用 是发送消息到snaxd
@@ -88,7 +89,7 @@ local handle_cache = setmetatable( {} , { __mode = "kv" } ) -- cache 所有的snaxd
 
 function snax.rawnewservice(name, ...)
 	local t = snax.interface(name)
-	local handle = skynet.newservice("snaxd", name) -- 启动一个snaxd服务
+	local handle = skynet.newservice("snaxd", name) -- 启动一个snaxd服务，它是对name所指定服务的一个包装
 	assert(handle_cache[handle] == nil)
 	if t.system.init then
 		skynet.call(handle, "snax", t.system.init, ...)
@@ -97,6 +98,7 @@ function snax.rawnewservice(name, ...)
 end
 
 -- 绑定snaxd service的handle和相关service name
+-- 返回的对象有req和和post2个table，它们下面又挂接了请求方法
 function snax.bind(handle, type)
 	local ret = handle_cache[handle]
 	if ret then

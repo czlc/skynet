@@ -1,5 +1,5 @@
 -- https://github.com/cloudwu/skynet/wiki/GateServer
--- gateserver是个框架，gate|msgserver是在其上的实现
+-- gateserver是个框架(也可以理解为service的基类，具体的处理函数由start传入的参数处理)，gate|msgserver是在其上的实现
 local skynet = require "skynet"
 local netpack = require "netpack"
 local socketdriver = require "socketdriver"
@@ -34,7 +34,8 @@ function gateserver.start(handler)
 	assert(handler.message)
 	assert(handler.connect)
 
-	-- 监听
+	-- source 表明是谁启动了这个gate服务
+	-- 见main.lua, conf = {	port = 8888,maxclient = 64,	servername = "sample",}
 	function CMD.open( source, conf )
 		assert(not socket)
 		local address = conf.address or "0.0.0.0"
@@ -71,7 +72,7 @@ function gateserver.start(handler)
 		if fd then
 			-- may dispatch even the handler.message blocked
 			-- If the handler.message never block, the queue should be empty, so only fork once and then exit.
-			skynet.fork(dispatch_queue)
+			skynet.fork(dispatch_queue)	-- 可以并行处理多个msg，它们的先后关系不要紧
 			dispatch_msg(fd, msg, sz)
 
 			for fd, msg, sz in netpack.pop, queue do

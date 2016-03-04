@@ -5,6 +5,7 @@ local CMD = {}
 
 local channel
 
+-- fd «stdin
 function CMD.start(address, fd)
 	assert(channel == nil, "start more than once")
 	skynet.error(string.format("Attach to :%08x", address))

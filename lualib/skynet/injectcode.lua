@@ -14,9 +14,9 @@ end
 local temp = {}
 local function wrap_locals(co, source, level, ext_funcs)
 	if co == coroutine.running() then
-		level = level + 3
+		level = level + 3	-- 往上3层，到dispatch_message那层
 	end
-	local f = debug.getinfo(co, level,"f").func
+	local f = debug.getinfo(co, level,"f").func	-- 得到
 	if f == nil then
 		return false, "Invalid level"
 	end

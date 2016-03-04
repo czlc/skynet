@@ -1,3 +1,5 @@
+-- u:output param，保存了所有table类型的upvalue，key = table name, value = table
+-- unique:output param,保存了所有function类型的upvalue，key = function, value = true
 local function getupvaluetable(u, func, unique)
 	local i = 1
 	while true do
@@ -18,6 +20,7 @@ local function getupvaluetable(u, func, unique)
 	end
 end
 
+-- source:文件内容
 return function(skynet, source, filename , ...)
 	if filename then
 		filename = "@" .. filename
@@ -35,7 +38,7 @@ return function(skynet, source, filename , ...)
 	end
 	local u = {}
 	local unique = {}
-	local funcs = { ... }
+	local funcs = { ... }	-- exp:export.dispatch, skynet.register_protocol
 	for k, func in ipairs(funcs) do
 		getupvaluetable(u, func, unique)
 	end

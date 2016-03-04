@@ -203,6 +203,7 @@ function COMMAND.exit(address)
 	skynet.send(adjust_address(address), "debug", "EXIT")
 end
 
+-- 将 script 名字对应的脚本插入到指定服务中运行（通常可用于热更新补丁）。
 function COMMAND.inject(address, filename)
 	address = adjust_address(address)
 	local f = io.open(filename, "rb")
@@ -224,6 +225,7 @@ function COMMAND.info(address)
 	return skynet.call(address,"debug","INFO")
 end
 
+-- 针对一个 lua 服务启动内置的单步调试
 function COMMAND.debug(address, fd)
 	address = adjust_address(address)
 	local agent = skynet.newservice "debug_agent"

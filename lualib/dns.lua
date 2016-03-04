@@ -303,7 +303,7 @@ local function suspend(tid, name, qtype)
 		co = coroutine.running(),
 	}
 	request_pool[tid] = req
-	skynet.fork(function()
+	skynet.fork(function()	-- ³¬Ê±¼ì²é
 		skynet.sleep(TIMEOUT)
 		local req = request_pool[tid]
 		if req then

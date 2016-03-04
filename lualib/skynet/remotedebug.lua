@@ -22,6 +22,7 @@ local function change_prompt(s)
 	prompt = s
 end
 
+-- 设置func名字为uvname的upvalue值为value，返回被替换的old upvalue
 local function replace_upvalue(func, uvname, value)
 	local i = 1
 	while true do
@@ -67,6 +68,7 @@ local function run_exp(ok, ...)
 	return ok
 end
 
+-- 消息处理流程中断下来后，观察和改变它的环境
 local function run_cmd(cmd, env, co, level)
 	if not run_exp(injectrun("return "..cmd, co, level, env)) then
 		print(select(2, injectrun(cmd,co, level,env)))
@@ -137,6 +139,7 @@ local function add_watch_hook()
 	end, "cr")
 end
 
+-- 可以监控某一类消息，并可以附加一个条件函数，在条件满足时才中断下来, 每次 watch 只对一条消息有效
 local function watch_proto(protoname, cond)
 	local proto = assert(replace_upvalue(skynet.register_protocol, "proto"), "Can't find proto table")
 	local p = proto[protoname]
@@ -166,18 +169,21 @@ end
 
 local dbgcmd = {}
 
+-- 单步运行一行，如果是函数调用，会跟踪进去
 function dbgcmd.s(co)
 	local ctx = ctx_active[co]
 	ctx.next_mode = false
 	skynet_suspend(co, coroutine.resume(co))
 end
 
+-- 单步运行一行，如果有函数调用，不会跟踪进去
 function dbgcmd.n(co)
 	local ctx = ctx_active[co]
 	ctx.next_mode = true
 	skynet_suspend(co, coroutine.resume(co))
 end
 
+-- 表示继续处理这条消息，离开关注状态。
 function dbgcmd.c(co)
 	sethook(co)
 	ctx_active[co] = nil
@@ -189,7 +195,7 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 	change_prompt(string.format(":%08x>", skynet.self()))
 
 	print = gen_print(fd)
-	local env = {
+	local env = {	-- 其下的成员将会设置成被调试cmd的upvalue
 		print = print,
 		watch = watch_proto
 	}
@@ -200,7 +206,7 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 
 	local function watch_cmd(cmd)
 		local co = next(ctx_active)
-		watch_env._CO = co
+		watch_env._CO = co	-- 保存在正在调试的协程对象
 		if dbgcmd[cmd] then
 			dbgcmd[cmd](co)
 		else
@@ -208,6 +214,7 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 		end
 	end
 
+	-- 因为被hook，每次调用raw_dispatch_message将会调用到这里来
 	local function debug_hook()
 		while true do
 			if newline then
@@ -216,6 +223,7 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 			end
 			local cmd = channel:read()
 			if cmd then
+				-- 输入 cont 脱离调试状态
 				if cmd == "cont" then
 					-- leave debug mode
 					break
@@ -244,8 +252,9 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 		debug_hook()
 		return func(...)
 	end
-	func = replace_upvalue(dispatcher, HOOK_FUNC, hook)
+	func = replace_upvalue(dispatcher, HOOK_FUNC, hook)	-- func 是被替换的old upvalue即HOOK_FUNC代表的函数
 	if func then
+		-- 由于 skynet 的服务在没有消息处理时是完全挂起的，所以一旦想调试一个服务，还必须给它安一个定时器定期唤醒检查调试管道
 		local function idle()
 			if raw_dispatcher then
 			    skynet.timeout(10,idle)	-- idle every 0.1s
@@ -256,6 +265,7 @@ local function hook_dispatch(dispatcher, resp, fd, channel)
 	return func
 end
 
+-- import是skynet.lua传入debug.lua的参数,fd一般是stdin，handle是debugchannel.create返回的channel的lightobject
 function M.start(import, fd, handle)
 	local dispatcher = import.dispatch
 	skynet_suspend = import.suspend

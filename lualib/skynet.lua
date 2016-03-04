@@ -46,7 +46,7 @@ local session_id_coroutine = {}			-- [session] = co，等待对方(session)回应的co数
 local session_coroutine_id = {}			-- [co] = session，等待回应对方(session)的co数组，co是收到了session的请求，等待自身处理完成的协程回应对方,收到了对方的请求，用co来执行请求，请求执行完了，根据这个co可以找到回复谁，所以key是co
 local session_coroutine_address = {}	-- [co] = addr，等待回应对方的地址，和session_coroutine_id配套使用
 local session_response = {}				-- [co] = closure，本服务待回应的请求，调用closure的时候会回应 http://blog.codingnow.com/2014/07/skynet_response.html
-local unresponse = {}
+local unresponse = {}					-- [closure] = true/false，记录等待调用的闭包，用于退出的时候返回通知等待方？
 
 local wakeup_session = {}				-- [co] = true 已经醒来的协程等待执行
 local sleep_session = {}				-- [co] = true 睡眠中的协程

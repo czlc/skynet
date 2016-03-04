@@ -1,5 +1,6 @@
 local table = table
 
+-- export 见skynet.lua
 return function (skynet, export)
 
 local internal_info_func
@@ -59,6 +60,7 @@ function dbgcmd.TERM(service)
 	skynet.term(service)
 end
 
+-- 参数为fd，handle，fd一般是stdin，handle是debugchannel.create返回的channel的lightobject
 function dbgcmd.REMOTEDEBUG(...)
 	local remotedebug = require "skynet.remotedebug"
 	remotedebug.start(export, ...)

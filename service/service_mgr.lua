@@ -3,10 +3,10 @@ require "skynet.manager"	-- import skynet.register
 local snax = require "snax"
 
 local cmd = {}
-local service = {}
+local service = {}	-- 启动之前：[service_name] = {launch = true, co1, co2, ...}，等待查询和启动的协程列表
+					-- 启动之后：[service_name] = handle本节点存储的所有全局服务
 
--- name = "snaxd.pingserver", func = snax.rawnewservice, "pingserver", "hello world"
--- name用于查找，func用作new service, arg[1]是service name
+-- 启动某个服务，func是用于启动的函数
 local function request(name, func, ...)
 	local ok, handle = pcall(func, ...)
 	local s = service[name]
@@ -17,6 +17,7 @@ local function request(name, func, ...)
 		service[name] = tostring(handle)	-- 调用失败service[name] 存错误字符串
 	end
 
+	-- 同时申请的其它协程都可以解散了
 	for _,v in ipairs(s) do
 		skynet.wakeup(v)
 	end
@@ -47,7 +48,7 @@ local function waitfor(name , func, ...)
 	assert(type(s) == "table")
 
 	if not s.launch and func then
-		s.launch = true
+		s.launch = true	-- 设置为正在启动，同时只允许一个协程去申请
 		return request(name, func, ...)
 	end
 
@@ -92,6 +93,7 @@ function cmd.QUERY(service_name, subname)
 	end
 end
 
+-- 获得本结点的全局服务列表
 local function list_service()
 	local result = {}
 	for k,v in pairs(service) do
@@ -112,6 +114,7 @@ end
 
 local function register_global()
 	function cmd.GLAUNCH(name, ...)
+		-- 对于master来说仅仅是注册到本地就可以了
 		local global_name = "@" .. name
 		return cmd.LAUNCH(global_name, ...)
 	end
@@ -123,6 +126,7 @@ local function register_global()
 
 	local mgr = {}
 
+	-- slave service_mgr 注册自己, m是其handle
 	function cmd.REPORT(m)
 		mgr[m] = true
 	end
@@ -135,6 +139,7 @@ local function register_global()
 		end
 	end
 
+	-- 获得所有节点的全局服务列表
 	function cmd.LIST()
 		local result = {}
 		for k in pairs(mgr) do
@@ -149,11 +154,13 @@ local function register_global()
 end
 
 local function register_local()
+	-- 启动一个全网唯一的服务
 	function cmd.GLAUNCH(name, ...)
 		local global_name = "@" .. name
 		return waitfor(global_name, skynet.call, "SERVICE", "lua", "LAUNCH", global_name, ...)
 	end
 
+	-- 查询一个全网唯一的服务
 	function cmd.GQUERY(name, ...)
 		local global_name = "@" .. name
 		return waitfor(global_name, skynet.call, "SERVICE", "lua", "QUERY", global_name, ...)
@@ -190,7 +197,7 @@ skynet.start(function()
 		skynet.register(".service")
 	end
 	if skynet.getenv "standalone" then	-- master 结点
-		skynet.register("SERVICE")	-- master 结点才有SERVICE命名服务
+		skynet.register("SERVICE")		-- master 结点才有SERVICE命名服务
 		register_global()
 	else
 		register_local()

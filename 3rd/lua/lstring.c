@@ -272,7 +272,7 @@ struct shrmap_slot {
 
 struct shrmap {
 	struct shrmap_slot h[SHRSTR_SLOT];
-	int n;
+	int n;	// 剩余共享空间
 };
 
 static struct shrmap SSM;
@@ -428,8 +428,8 @@ luaS_clonestring(lua_State *L, TString *ts) {
 }
 
 struct slotinfo {
-	int len;
-	int size;
+	int len;	// 此slot字符串个数
+	int size;	// 此slot所有字符串总长度
 };
 
 static void
@@ -461,9 +461,9 @@ luaS_shrinfo(lua_State *L) {
 		}
 		total.size += tmp.size;
 	}
-	lua_pushinteger(L, len);
-	lua_pushinteger(L, total.size);
-	lua_pushinteger(L, total.len);
-	lua_pushinteger(L, SSM.n);
+	lua_pushinteger(L, len);		// 所有字符串个数
+	lua_pushinteger(L, total.size);	// 所有字符串长度
+	lua_pushinteger(L, total.len);	// 字符串最多的slot，用来检验hash是否均匀
+	lua_pushinteger(L, SSM.n);		// 剩余空间
 	return 4;
 }

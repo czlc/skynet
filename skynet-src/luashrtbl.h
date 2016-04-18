@@ -1,3 +1,5 @@
+// http://blog.codingnow.com/2015/08/lua_vm_share_string.html
+// 共享lua vm 间的小字符串
 #ifndef LUA_SHORT_STRING_TABLE_H
 #define LUA_SHORT_STRING_TABLE_H
 

@@ -1,10 +1,12 @@
 local skynet = require "skynet"
 local sprotoloader = require "sprotoloader"
+local m = require "memory"
 
 local max_client = 64
 
 skynet.start(function()
 	print("Server start")
+	m.dumpinfo()
 	skynet.uniqueservice("protoloader")
 	local console = skynet.newservice("console")
 	skynet.newservice("debug_console",8000)

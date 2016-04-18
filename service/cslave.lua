@@ -9,7 +9,7 @@ local connect_queue = {}	-- 初始化结束后，需要去连接的slave [slave_id] -> addres
 local globalname = {}		-- 全局名字
 local queryname = {}
 local harbor = {}			-- 命令处理函数
-local harbor_service
+local harbor_service		-- harbor 服务
 local monitor = {}
 local monitor_master_set = {}
 
@@ -21,6 +21,7 @@ local function read_package(fd)
 	return skynet.unpack(content)
 end
 
+-- 将参数打包成size + msg
 local function pack_package(...)
 	local message = skynet.packstring(...)
 	local size = #message
@@ -114,6 +115,7 @@ local function monitor_master(master_fd)
 	end
 end
 
+-- accept 一个slave 连接
 local function accept_slave(fd)
 	socket.start(fd)
 	local id = socket.read(fd, 1)	-- 对方harbor服务发过来的handshake，为对方harbor id
@@ -136,6 +138,7 @@ local function accept_slave(fd)
 	skynet.send(harbor_service, "harbor", string.format("A %d %d", fd, id))
 end
 
+-- 貌似脚本中不会处理harbor，由harbor_service处理
 skynet.register_protocol {
 	name = "harbor",
 	id = skynet.PTYPE_HARBOR,
@@ -152,10 +155,12 @@ skynet.register_protocol {
 
 local function monitor_harbor(master_fd)
 	return function(session, source, command)
+		-- 处理"text"协议
 		local t = string.sub(command, 1, 1)
 		local arg = string.sub(command, 3)
 		if t == 'Q' then
 			-- query name
+			-- c里面发送给其它harbor但是找不到目标名字
 			if globalname[arg] then
 				skynet.redirect(harbor_service, globalname[arg], "harbor", 0, "N " .. arg)
 			else
@@ -183,6 +188,7 @@ function harbor.REGISTER(fd, name, handle)
 	skynet.redirect(harbor_service, handle, "harbor", 0, "N " .. name)
 end
 
+-- 监控一个 slave 是否断开，id为harbor id，如果 harbor id 对应的 slave 正常，这个 api 将阻塞。当 slave 断开时，会立刻返回
 function harbor.LINK(fd, id)
 	if slaves[id] then
 		if monitor[id] == nil then
@@ -194,10 +200,12 @@ function harbor.LINK(fd, id)
 	end
 end
 
+-- 监控一个 master 是否断开类似LINK
 function harbor.LINKMASTER()
 	table.insert(monitor_master_set, skynet.response())
 end
 
+-- 和 LINK 相反。如果 harbor id 对应的 slave 没有连接，这个 api 将阻塞，一直到它连上来才返回
 function harbor.CONNECT(fd, id)
 	if not slaves[id] then
 		if monitor[id] == nil then
@@ -209,6 +217,7 @@ function harbor.CONNECT(fd, id)
 	end
 end
 
+-- 可以用来查询全局名字或本地名字对应的服务地址。它是一个阻塞调用。
 function harbor.QUERYNAME(fd, name)
 	if name:byte() == 46 then	-- "." , local name
 		skynet.ret(skynet.pack(skynet.localname(name)))
@@ -236,12 +245,16 @@ skynet.start(function()
 	skynet.error("slave connect to master " .. tostring(master_addr))
 	local master_fd = assert(socket.open(master_addr), "Can't connect to master")
 
+	-- 见harbor.lua
 	skynet.dispatch("lua", function (_,_,command,...)
 		local f = assert(harbor[command])
 		f(master_fd, ...)
 	end)
+
+	-- 见service_harbor.c
 	skynet.dispatch("text", monitor_harbor(master_fd))
 
+	-- 启动harbor服务
 	harbor_service = assert(skynet.launch("harbor", harbor_id, skynet.self()))
 	-- step1:向master发送握手协议
 	local hs_message = pack_package("H", harbor_id, slave_address)

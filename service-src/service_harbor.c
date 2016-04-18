@@ -151,10 +151,11 @@ release_queue(struct harbor_msg_queue *queue) {
 	skynet_free(queue);
 }
 
+/* 根据slave 名字 找到对应的node */
 static struct keyvalue *
 hash_search(struct hashmap * hash, const char name[GLOBALNAME_LENGTH]) {
 	uint32_t *ptr = (uint32_t*) name;
-	uint32_t h = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
+	uint32_t h = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];	// hash
 	struct keyvalue * node = hash->node[h % HASH_SIZE];
 	while (node) {
 		if (node->hash == h && strncmp(node->key, name, GLOBALNAME_LENGTH) == 0) {
@@ -563,7 +564,7 @@ remote_send_name(struct harbor *h, uint32_t source, const char name[GLOBALNAME_L
 	if (node == NULL) {
 		node = hash_insert(h->map, name);
 	}
-	// 目标名字还有注册相应的handle，所以要先放到缓存队列中，当此名字注册了对应的handle就可以发送了
+	// 目标名字还没有注册相应的handle，所以要先放到缓存队列中，当此名字注册了对应的handle就可以发送了
 	if (node->value == 0) {
 		if (node->queue == NULL) {
 			node->queue = new_queue();
@@ -698,7 +699,7 @@ mainloop(struct skynet_context * context, void * ud, int type, int session, uint
 		return 0;
 	}
 	default: {
-		// remote message out
+		// remote message out 发送到其它节点
 		const struct remote_message *rmsg = msg;
 		if (rmsg->destination.handle == 0) {
 			if (remote_send_name(h, source , rmsg->destination.name, type, session, rmsg->message, rmsg->sz)) {
@@ -727,7 +728,7 @@ harbor_init(struct harbor *h, struct skynet_context *ctx, const char * args) {
 	h->id = harbor_id;
 	h->slave = slave;
 	skynet_callback(ctx, h, mainloop);
-	skynet_harbor_start(ctx);
+	skynet_harbor_start(ctx);	/* 注册harbor 服务，这样外面就可以和它通信了 */
 
 	return 0;
 }

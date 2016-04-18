@@ -107,7 +107,7 @@ local function monitor_slave(slave_id, slave_address)
 	while pcall(dispatch_slave, fd) do end
 	skynet.error("slave " ..slave_id .. " is down")
 	local message = pack_package("D", slave_id)
-	slave_node[slave_id].fd = 0
+	slave_node[slave_id].fd = 0	-- 并未清除slave_node[slave_id]是为了重启后不能复用，否则id冲突
 	for k,v in pairs(slave_node) do
 		socket.write(v.fd, message)
 	end

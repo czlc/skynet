@@ -9,6 +9,7 @@
 
 struct skynet_context;
 
+/* 注册一个ctx，并返回其句柄 */
 uint32_t skynet_handle_register(struct skynet_context *);
 int skynet_handle_retire(uint32_t handle);
 struct skynet_context * skynet_handle_grab(uint32_t handle);

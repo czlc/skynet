@@ -21,6 +21,8 @@ check_pid(const char *pidfile) {
 		return 0;
 	}
 
+	// kill第二个参数传入0表示并不会发送发送kill signal，用于检查是否存在指定的pid
+	// ESRCH表示pid指定的进程并不存在
 	if (kill(pid, 0) && errno == ESRCH)
 		return 0;
 

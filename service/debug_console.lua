@@ -274,6 +274,10 @@ function COMMAND.cmem()
 end
 
 function COMMAND.shrtbl()
+	-- n:所有字符串个数,
+	-- total:所有字符串长度
+	-- longest:字符串最多的slot，用来检验hash是否均匀, 
+	-- space:剩余空间(还可以存新字符串个数)
 	local n, total, longest, space = memory.ssinfo()
 	return { n = n, total = total, longest = longest, space = space }
 end

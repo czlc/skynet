@@ -16,7 +16,9 @@ typedef struct _mem_data {
 	ssize_t allocated;
 } mem_data;
 
+// SLOT_SIZE为handle空间，这里假设handle不会冲突，如果冲突，则冲突的不计数
 #define SLOT_SIZE 0x10000
+// PREFIX_SIZE 用来存分配内存的服务handle，其实是放在末尾的
 #define PREFIX_SIZE sizeof(uint32_t)
 
 static mem_data mem_stats[SLOT_SIZE];
@@ -30,6 +32,7 @@ static mem_data mem_stats[SLOT_SIZE];
 #define raw_realloc je_realloc
 #define raw_free je_free
 
+/* 获得某个服务的内存占用状态 */
 static ssize_t*
 get_allocated_field(uint32_t handle) {
 	int h = (int)(handle & (SLOT_SIZE - 1));
@@ -37,14 +40,18 @@ get_allocated_field(uint32_t handle) {
 	uint32_t old_handle = data->handle;
 	ssize_t old_alloc = data->allocated;
 	if(old_handle == 0 || old_alloc <= 0) {
+		// 还未有人占用，试图占用一个新的空间
 		// data->allocated may less than zero, because it may not count at start.
 		if(!ATOM_CAS(&data->handle, old_handle, handle)) {
+			// 说明瞬间被别人占用
 			return 0;
 		}
+		// 初始化
 		if (old_alloc < 0) {
 			ATOM_CAS(&data->allocated, old_alloc, 0);
 		}
 	}
+	// 已被别人占用，说明当冲突的时候这个服务的内存用量就统计不了，但是一般也比较难冲突，65535个服务
 	if(data->handle != handle) {
 		return 0;
 	}
@@ -61,6 +68,7 @@ update_xmalloc_stat_alloc(uint32_t handle, size_t __n) {
 	}
 }
 
+/* 分配内存 or 释放内存 的时候更新一些统计信息 */
 inline static void
 update_xmalloc_stat_free(uint32_t handle, size_t __n) {
 	ATOM_SUB(&_used_memory, __n);
@@ -136,7 +144,7 @@ mallctl_opt(const char* name, int* newval) {
 }
 
 // hook : malloc, realloc, free, calloc
-
+// 实现 malloc 等同名 api 以重载 libc 对应 api 实现的
 void *
 skynet_malloc(size_t size) {
 	void* ptr = je_malloc(size + PREFIX_SIZE);
@@ -250,6 +258,7 @@ dump_mem_lua(lua_State *L) {
 	return 1;
 }
 
+/* 获得当前服务的内存用量 */
 size_t
 malloc_current_memory(void) {
 	uint32_t handle = skynet_current_handle();

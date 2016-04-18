@@ -59,6 +59,7 @@ function command.DEL(source, c)
 end
 
 -- forward multicast message to a node (channel id use the session field)
+-- node 表明是哪个结点，harbor id
 local function remote_publish(node, channel, source, ...)
 	skynet.redirect(node_address[node], source, "multicast", channel, ...)
 end
@@ -83,7 +84,7 @@ local function publish(c , source, pack, size)
 		mc.close(pack)
 		return
 	end
-	mc.bind(pack, channel_n[c])
+	mc.bind(pack, channel_n[c])	-- 设置引用计数
 	local msg = skynet.tostring(pack, size)
 	for k in pairs(group) do
 		-- the msg is a pointer to the real message, publish pointer in local is ok.
@@ -102,11 +103,13 @@ skynet.register_protocol {
 
 -- publish a message, if the caller is remote, forward the message to the owner node (by remote_publish)
 -- If the caller is local, call publish
+-- pack 是
 function command.PUB(source, c, pack, size)
 	assert(skynet.harbor(source) == harbor_id) -- 只能本地节点调用
 	local node = c % 256
 	if node ~= harbor_id then
 		-- remote publish
+		-- 如果是调用远程结点的pub, mc.remote(pack)表示可以在取得pack的数据之后，删除它了
 		remote_publish(node, c, source, mc.remote(pack))
 	else
 		publish(c, source, pack,size)
@@ -196,6 +199,6 @@ skynet.start(function()
 	end)
 	local self = skynet.self()
 	local id = skynet.harbor(self)
-	assert(datacenter.set("multicast", id, self) == nil)
+	assert(datacenter.set("multicast", id, self) == nil)	-- 注册自己，以便其它结点的multicastd可以找到自己
 end)
 

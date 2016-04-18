@@ -12,7 +12,7 @@ skynet.start(function()
 	local v = skynet.call(proxy, "lua", "GET", largekey)
 	assert(largevalue == v)
 
-	print(cluster.call("db", sdb, "GET", "a"))
+	print(cluster.call("db", sdb, "GET", "a"))	-- 也可以不通过代理
 	print(cluster.call("db2", sdb, "GET", "b"))
 
 	-- test snax service

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+/* 打开ctx 相关的log*/
 FILE * 
 skynet_log_open(struct skynet_context * ctx, uint32_t handle) {
 	const char * logpath = skynet_getenv("logpath");

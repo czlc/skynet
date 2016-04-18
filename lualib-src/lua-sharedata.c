@@ -22,7 +22,7 @@ union value {
 	lua_Number n;
 	lua_Integer d;
 	struct table * tbl;
-	int string;
+	int string;	// 存的它在L表中的索引
 	int boolean;
 };
 
@@ -57,11 +57,13 @@ struct context {
 	int string_index;
 };
 
+// query的返回的对象
 struct ctrl {
-	struct table * root;
-	struct table * update;
+	struct table * root;		// cobj
+	struct table * update;		// 最新的cobj
 };
 
+/* 统计(1)中hash 部分元素个数 */
 static int
 countsize(lua_State *L, int sizearray) {
 	int n = 0;
@@ -71,10 +73,12 @@ countsize(lua_State *L, int sizearray) {
 		++n;
 		if (type == LUA_TNUMBER) {
 			if (!lua_isinteger(L, -2)) {
+				// 必须是整数
 				luaL_error(L, "Invalid key %f", lua_tonumber(L, -2));
 			}
 			lua_Integer nkey = lua_tointeger(L, -2);
 			if (nkey > 0 && nkey <= sizearray) {
+				// 把array部分计数排除
 				--n;
 			}
 		} else if (type != LUA_TSTRING && type != LUA_TTABLE) {
@@ -106,10 +110,11 @@ stringindex(struct context *ctx, const char * str, size_t sz) {
 	int index;
 	// stringmap(1) str index
 	if (lua_isnil(L, -1)) {
+		// 如果还没有这个字符串
 		index = ++ctx->string_index;
-		lua_pop(L, 1);
+		lua_pop(L, 1);	// pop nil
 		lua_pushinteger(L, index);
-		lua_rawset(L, 1);
+		lua_rawset(L, 1);	// 字符串设置进来
 	} else {
 		index = lua_tointeger(L, -1);
 		lua_pop(L, 2);
@@ -216,6 +221,7 @@ fillnocolliding(lua_State *L, struct context *ctx) {
 		int keytype;
 		uint32_t keyhash;
 		if (!ishashkey(ctx, L, -2, &key, &keyhash, &keytype)) {
+			// 数组部分
 			setarray(ctx, L, -1, key);
 		} else {
 			struct node * n = &tbl->hash[keyhash % tbl->sizehash];
@@ -271,6 +277,7 @@ fillcolliding(lua_State *L, struct context *ctx) {
 
 // table need convert
 // struct context * ctx
+/* 把从脚本中得到的table存入ctx中去 */
 static int
 convtable(lua_State *L) {
 	int i;
@@ -294,6 +301,7 @@ convtable(lua_State *L) {
 		}
 		tbl->sizearray = sizearray;
 	}
+
 	int sizehash = countsize(L, sizearray);
 	if (sizehash) {
 		tbl->hash = (struct node *)malloc(sizehash * sizeof(struct node));
@@ -341,20 +349,21 @@ delete_tbl(struct table *tbl) {
 	free(tbl);
 }
 
+
 static int
 pconv(lua_State *L) {
 	struct context *ctx = lua_touserdata(L,1);
-	lua_State * pL = lua_touserdata(L, 2);
+	lua_State * pL = lua_touserdata(L, 2);		// pL用于取脚本中的table值
 	int ret;
 
 	lua_settop(L, 0);
 
 	// init L (may throw memory error)
 	// create a table for string map
-	lua_newtable(L);
+	lua_newtable(L);	// string table处在栈的位置始终为1，见stringindex。[string] = index, [index] = string，可以快速查，也可以快速加
 
 	lua_pushcfunction(pL, convtable);
-	lua_pushvalue(pL,1);
+	lua_pushvalue(pL,1);	// 得到脚本中传入的table
 	lua_pushlightuserdata(pL, ctx);
 
 	ret = lua_pcall(pL, 2, 0, 0);
@@ -382,7 +391,7 @@ convert_stringmap(struct context *ctx, struct table *tbl) {
 	s->dirty = 0;
 	s->ref = 0;
 	s->root = tbl;
-	lua_replace(L, 1);
+	lua_replace(L, 1);	// state 处在 index = 1 的位置
 	lua_replace(L, -2);
 
 	lua_pushnil(L);
@@ -399,15 +408,16 @@ convert_stringmap(struct context *ctx, struct table *tbl) {
 	lua_gc(L, LUA_GCCOLLECT, 0);
 }
 
+/* 把脚本中传入的table，转储为可以多线程共享的table，并将起指针压入 */
 static int
 lnewconf(lua_State *L) {
 	int ret;
 	struct context ctx;
 	struct table * tbl = NULL;
-	luaL_checktype(L,1,LUA_TTABLE);
-	ctx.L = luaL_newstate();
-	ctx.tbl = NULL;
-	ctx.string_index = 1;	// 1 reserved for dirty flag
+	luaL_checktype(L,1,LUA_TTABLE);	// 传入需要共享的表
+	ctx.L = luaL_newstate();		// 保存状态
+	ctx.tbl = NULL;					// 它保存了表，用于内存共享给其他服务
+	ctx.string_index = 1;			// 1 reserved for dirty flag
 	if (ctx.L == NULL) {
 		lua_pushliteral(L, "memory error");
 		goto error;
@@ -537,6 +547,7 @@ lindexconf(lua_State *L) {
 	size_t sz = 0;
 	const char * str = NULL;
 	if (kt == LUA_TNUMBER) {
+		// 只支持整形和字符串
 		if (!lua_isinteger(L, 2)) {
 			return luaL_error(L, "Invalid key %f", lua_tonumber(L, 2));
 		}
@@ -549,6 +560,7 @@ lindexconf(lua_State *L) {
 		keytype = KEYTYPE_INTEGER;
 		keyhash = (uint32_t)key;
 	} else {
+		// 只支持整形和字符串
 		str = luaL_checklstring(L, 2, &sz);
 		keyhash = calchash(str, sz);
 		keytype = KEYTYPE_STRING;
@@ -669,6 +681,7 @@ releaseobj(lua_State *L) {
 	return 0;
 }
 
+/* 对 cobj的封装 */
 static int
 lboxconf(lua_State *L) {
 	struct table * tbl = get_table(L,1);	
@@ -687,6 +700,7 @@ lboxconf(lua_State *L) {
 	return 1;
 }
 
+/* 标记一个cobj已经dirty(被修改)*/
 static int
 lmarkdirty(lua_State *L) {
 	struct table *tbl = get_table(L,1);
@@ -756,8 +770,8 @@ lupdate(lua_State *L) {
 		return luaL_error(L, "You should update a new object");
 	}
 	lua_settop(L, 3);
-	lua_setuservalue(L, 1);
-	c->update = n;
+	lua_setuservalue(L, 1);	// 3 作为uservalue关联在ctrl下
+	c->update = n;	// 保存新的cobj，仅仅用于标识
 
 	return 0;
 }
@@ -773,7 +787,7 @@ luaopen_sharedata_core(lua_State *L) {
 		{ "incref", lincref },
 		{ "decref", ldecref },
 
-		// used by client
+		// used by client，仅仅是读操作
 		{ "box", lboxconf },
 		{ "index", lindexconf },
 		{ "nextkey", lnextkey },

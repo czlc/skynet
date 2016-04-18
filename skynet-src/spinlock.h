@@ -17,11 +17,13 @@ spinlock_init(struct spinlock *lock) {
 	lock->lock = 0;
 }
 
+/* 自旋锁 */
 static inline void
 spinlock_lock(struct spinlock *lock) {
 	while (__sync_lock_test_and_set(&lock->lock,1)) {}
 }
 
+/* 查看当前能否获得锁，并锁住它 */
 static inline int
 spinlock_trylock(struct spinlock *lock) {
 	return __sync_lock_test_and_set(&lock->lock,1) == 0;

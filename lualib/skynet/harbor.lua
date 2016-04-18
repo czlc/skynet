@@ -23,6 +23,7 @@ function harbor.connect(id)
 	skynet.call(".cslave", "lua", "CONNECT", id)
 end
 
+-- ¼à¿ØMASTERÊÇ·ñ¶Ï¿ª
 function harbor.linkmaster()
 	skynet.call(".cslave", "lua", "LINKMASTER")
 end

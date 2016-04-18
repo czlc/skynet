@@ -26,20 +26,20 @@
 //   的时候再重新把此message_queue push到 global_queue中来
 struct message_queue {
 	struct spinlock lock;	// 多个线程可能同时对queue做操作
-	uint32_t handle;	// create ctx 的时候传入
-	int cap;			// queue size
-	int head;
-	int tail;
+	uint32_t handle;		// 消息队列所属的服务句柄
+	int cap;				// queue size
+	int head;				// 循环队列head
+	int tail;				// 循环队列tail
 	int release;
 	int in_global;
 	int overload;
-	int overload_threshold;
-	struct skynet_message *queue;
-	struct message_queue *next;
+	int overload_threshold;	// 过载临界点
+	struct skynet_message *queue;	// 循环队列用数组的方式实现
+	struct message_queue *next;		// 维系它在全局队列中的关系
 };
 // 它可能同时被global_queue和skynet_context引用所以删除的时候需要注意 http://blog.codingnow.com/2012/08/skynet_bug.html
 
-// 无锁全局队列，worker从head取，新来的压入tail
+// 全局队列，worker从head取，新来的压入tail
 struct global_queue {
 	struct message_queue *head;
 	struct message_queue *tail;
@@ -49,12 +49,14 @@ struct global_queue {
 
 static struct global_queue *Q = NULL;
 
+/* 向全局队列中压入一个消息队列 */
 void 
 skynet_globalmq_push(struct message_queue * queue) {
 	struct global_queue *q= Q;
 
+	// 要求线程安全
 	SPIN_LOCK(q)
-	assert(queue->next == NULL);
+	assert(queue->next == NULL);	// 必须是一个独立的队列
 	if(q->tail) {
 		q->tail->next = queue;
 		q->tail = queue;
@@ -64,6 +66,7 @@ skynet_globalmq_push(struct message_queue * queue) {
 	SPIN_UNLOCK(q)
 }
 
+/* 从全局队列中弹出第一个消息队列 */
 struct message_queue * 
 skynet_globalmq_pop() {
 	struct global_queue *q = Q;
@@ -83,6 +86,7 @@ skynet_globalmq_pop() {
 	return mq;
 }
 
+/* 为指定服务创建一个消息队列 */
 struct message_queue * 
 skynet_mq_create(uint32_t handle) {
 	struct message_queue *q = skynet_malloc(sizeof(*q));
@@ -92,8 +96,8 @@ skynet_mq_create(uint32_t handle) {
 	q->tail = 0;
 	SPIN_INIT(q)
 	// When the queue is create (always between service create and service init) ,
-	// set in_global flag to avoid push it to global queue .
-	// If the service init success, skynet_context_new will call skynet_mq_force_push to push it to global queue.
+	// set in_global flag to avoid push it to global queue (因为别的服务可能这个时候给它发送消息，在它之前已经为其注册了handle，所以别人可能向它发送消息).
+	// If the service init success, skynet_context_new will call skynet_globalmq_push to push it to global queue.
 	q->in_global = MQ_IN_GLOBAL;
 	q->release = 0;
 	q->overload = 0;
@@ -133,6 +137,7 @@ skynet_mq_length(struct message_queue *q) {
 	return tail + cap - head;
 }
 
+/* 获得当前过载量，只有超过过载临界点才会记录一次，且连续记录是翻倍的量，即第一次记录n，清空前第二次需要2n才会记录 */ 
 int
 skynet_mq_overload(struct message_queue *q) {
 	if (q->overload) {
@@ -143,6 +148,7 @@ skynet_mq_overload(struct message_queue *q) {
 	return 0;
 }
 
+/* 从消息队列中弹出一条消息 */
 int
 skynet_mq_pop(struct message_queue *q, struct skynet_message *message) {
 	int ret = 1;
@@ -155,6 +161,7 @@ skynet_mq_pop(struct message_queue *q, struct skynet_message *message) {
 		int tail = q->tail;
 		int cap = q->cap;
 
+		// head 偏移超过范围了，说明得从头开始
 		if (head >= cap) {
 			q->head = head = 0;
 		}
@@ -195,6 +202,7 @@ expand_queue(struct message_queue *q) {
 	q->queue = new_queue;
 }
 
+/* 向某个服务的消息队列末尾压入一条消息，如果消息队列不在global queue，则将此队列压入进去 */
 void 
 skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 	assert(message);

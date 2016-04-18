@@ -2,7 +2,7 @@ local skynet = require "skynet"
 local socket = require "socket"
 
 local function server()
-	local host
+	local host -- host 是 socket id
 	host = socket.udp(function(str, from)
 		print("server recv", str, socket.udp_address(from))
 		socket.sendto(host, from, "OK " .. str)
@@ -10,6 +10,7 @@ local function server()
 end
 
 local function client()
+	-- socket.udp，没有写ip和port，表示这是一个发送socket
 	local c = socket.udp(function(str, from)
 		print("client recv", str, socket.udp_address(from))
 	end)

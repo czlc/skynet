@@ -5,7 +5,7 @@ local cluster = require "cluster.core"
 
 local config_name = skynet.getenv "cluster"
 local node_address = {}		-- [node_name] = ip:port
-local node_session = {}
+local node_session = {}		-- [node_name] = next_session
 local command = {}
 
 local function read_response(sock)
@@ -34,7 +34,7 @@ local function loadconfig()
 	local source = f:read "*a"
 	f:close()
 	local tmp = {}
-	assert(load(source, "@"..config_name, "t", tmp))()
+	assert(load(source, "@"..config_name, "t", tmp))()	-- tmp 是env
 	for name,address in pairs(tmp) do
 		assert(type(address) == "string")
 		if node_address[name] ~= address then
@@ -63,7 +63,8 @@ end
 
 local function send_request(source, node, addr, msg, sz)
 	local session = node_session[node] or 1
-	-- msg is a local pointer, cluster.packrequest will free it
+	-- msg is a local pointer, cluster.packrequest will free it，卧槽，外面用怎么办?
+	-- request是打包后的内容，如果包比较大，request只是个head，真正数据在padding这个table中
 	local request, new_session, padding = cluster.packrequest(addr, session, msg, sz)
 	node_session[node] = new_session
 
@@ -73,6 +74,7 @@ local function send_request(source, node, addr, msg, sz)
 	return c:request(request, session, padding)
 end
 
+-- 阻塞请求
 function command.req(...)
 	local ok, msg, sz = pcall(send_request, ...)
 	if ok then
@@ -83,7 +85,7 @@ function command.req(...)
 		end
 	else
 		skynet.error(msg)
-		skynet.response()(false)
+		skynet.response()(false)	-- Q:liuchang 为什么不直接skynet.ret(skynet.pack(false))
 	end
 end
 
@@ -97,7 +99,7 @@ function command.proxy(source, node, name)
 	skynet.ret(skynet.pack(proxy[fullname]))
 end
 
-local register_name = {}
+local register_name = {}	-- name和addr的映射表
 
 function command.register(source, name, addr)
 	assert(register_name[name] == nil)
@@ -139,6 +141,7 @@ function command.socket(source, subcmd, fd, msg)
 		end
 		local ok, response
 		if addr == 0 then
+			-- 查询节点下面服务的id
 			local name = skynet.unpack(msg, sz)
 			local addr = register_name[name]
 			if addr then

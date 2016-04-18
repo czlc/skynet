@@ -1,3 +1,4 @@
+/* 协议规定，对于每一个网络包，前面2个字节为包的大小，后面是包的内容，此lib的作用就在于组包 */
 #include "skynet_malloc.h"
 
 #include "skynet_socket.h"
@@ -10,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define QUEUESIZE 1024
+#define QUEUESIZE 1024	// 每次扩展1024个包
 #define HASHSIZE 4096
 #define SMALLSTRING 2048
 
@@ -25,8 +26,9 @@
 	Each package is uint16 + data , uint16 (serialized in big-endian) is the number of bytes comprising the data .
  */
 
+/* 完整的数据包 */
 struct netpack {
-	int id;
+	int id;			// socket id，表明是哪个socket发来的数据包
 	int size;		// 这个数据包总共需要接收的数据大小
 	void * buffer;	// 用于接收数据的缓存
 };
@@ -42,9 +44,9 @@ struct uncomplete {
 struct queue {
 	int cap;
 	int head;
-	int tail;
-	struct uncomplete * hash[HASHSIZE];	// hash表，保存尚未接收完数据的缓存，开链试，socket id 经过hash_fd之后的值hash后的值做，一个桶可以对应一个链表
-	struct netpack queue[QUEUESIZE]; // 完整的包
+	int tail;	// 指向当前第一个可用slot
+	struct uncomplete * hash[HASHSIZE];	// hash表，保存尚未接收完数据的缓存，开链试，socket id 经过hash_fd之后的值hash后的值做，一个桶可以对应一个链表，每一个socket id只能对应一个uncomplete
+	struct netpack queue[QUEUESIZE]; // 还未处理的完整的包，循环数组
 };
 
 static void
@@ -81,7 +83,7 @@ lclear(lua_State *L) {
 }
 
 
-// fd hash成一个小于HASHSIZE(4096)的整数
+// socketid fd hash成一个小于HASHSIZE(4096)的整数
 static inline int
 hash_fd(int fd) {
 	int a = fd >> 24;
@@ -160,8 +162,9 @@ push_data(lua_State *L, int fd, void *buffer, int size, int clone) {
 	}
 	struct queue *q = get_queue(L);
 	struct netpack *np = &q->queue[q->tail];
+	// 如果尾巴超出范围则从头开始
 	if (++q->tail >= q->cap)
-		q->tail -= q->cap; // NOTE:liuchang 直接=0不就好了？
+		q->tail -= q->cap;
 	np->id = fd;
 	np->buffer = buffer;
 	np->size = size;
@@ -238,6 +241,7 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 	if (uc) {
 		// fill uncomplete
 		if (uc->read < 0) {
+			// 之前只收到一个字节，size还不够
 			// read size
 			assert(uc->read == -1);
 			int pack_size = *buffer;
@@ -249,14 +253,15 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 			uc->read = 0;
 		}
 		int need = uc->pack.size - uc->read;
-		// 还是不够一个完整包
 		if (size < need) {
+			// 收到的数据还是不够补全包
 			memcpy(uc->pack.buffer + uc->read, buffer, size);
 			uc->read += size;
 			int h = hash_fd(fd);
-			uc->next = q->hash[h]; // 搬到前面来
+			// 再压回去，之前find_uncomplete将其pop出来了
+			uc->next = q->hash[h];
 			q->hash[h] = uc;
-			return 1;
+			return 1;	// queue
 		}
 		memcpy(uc->pack.buffer + uc->read, buffer, need);
 		buffer += need;
@@ -271,7 +276,7 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 			return 5;
 		}
 		// more data
-		push_data(L, fd, uc->pack.buffer, uc->pack.size, 0);	// 先压一个进去再说
+		push_data(L, fd, uc->pack.buffer, uc->pack.size, 0);	// 先压一个整包进去
 		skynet_free(uc);
 		push_more(L, fd, buffer, size);
 		lua_pushvalue(L, lua_upvalueindex(TYPE_MORE));	// 压入字符串"more"
@@ -318,6 +323,7 @@ filter_data_(lua_State *L, int fd, uint8_t * buffer, int size) {
 	}
 }
 
+/* fd 为 socket id*/
 static inline int
 filter_data(lua_State *L, int fd, uint8_t * buffer, int size) {
 	int ret = filter_data_(L, fd, buffer, size);
@@ -345,6 +351,8 @@ pushstring(lua_State *L, const char * msg, int size) {
 		integer type
 		integer fd
 		string msg | lightuserdata/integer
+
+	收到消息的统一处理
  */
 static int
 lfilter(lua_State *L) {
@@ -375,10 +383,11 @@ lfilter(lua_State *L) {
 		lua_pushinteger(L, message->id);
 		return 3;
 	case SKYNET_SOCKET_TYPE_ACCEPT:
+		// 此时还不能收发数据，需要start之后才行
 		lua_pushvalue(L, lua_upvalueindex(TYPE_OPEN));
 		// ignore listen id (message->id);
-		lua_pushinteger(L, message->ud);	// ud is listen id
-		pushstring(L, buffer, size);
+		lua_pushinteger(L, message->ud);	// ud is client socket id
+		pushstring(L, buffer, size);		// client addr info
 		return 4;
 	case SKYNET_SOCKET_TYPE_ERROR:
 		// no more data in fd (message->id)
@@ -441,6 +450,7 @@ tolstring(lua_State *L, size_t *sz, int index) {
 
 static inline void
 write_size(uint8_t * buffer, int len) {
+	// 大端，低地址存放高位
 	buffer[0] = (len >> 8) & 0xff;
 	buffer[1] = len & 0xff;
 }
@@ -450,9 +460,11 @@ lpack(lua_State *L) {
 	size_t len;
 	const char * ptr = tolstring(L, &len, 1);
 	if (len >= 0x10000) {
+		// 64k上限
 		return luaL_error(L, "Invalid size (too long) of data : %d", (int)len);
 	}
 
+	// 多2字节存放长度
 	uint8_t * buffer = skynet_malloc(len + 2);
 	write_size(buffer, len);
 	memcpy(buffer+2, ptr, len);
@@ -489,15 +501,15 @@ luaopen_netpack(lua_State *L) {
 	luaL_newlib(L,l);
 
 	// the order is same with macros : TYPE_* (defined top)
-	lua_pushliteral(L, "data");
-	lua_pushliteral(L, "more");
+	lua_pushliteral(L, "data");			// 某fd收到 == 一个完整的包
+	lua_pushliteral(L, "more");			// 某fd收到 >= 一个完整的包
 	lua_pushliteral(L, "error");
 	lua_pushliteral(L, "open");
 	lua_pushliteral(L, "close");
 	lua_pushliteral(L, "warning");
 
 	lua_pushcclosure(L, lfilter, 6);
-	lua_setfield(L, -2, "filter");
+	lua_setfield(L, -2, "filter");		// 收到消息的统一处理
 
 	return 1;
 }

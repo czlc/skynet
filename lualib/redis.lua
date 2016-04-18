@@ -15,7 +15,9 @@ local meta = {
 
 ---------- redis response
 local redcmd = {}
+-- redis协议规范 http://redis.io/topics/protocol
 
+-- Bulk Strings
 redcmd[36] = function(fd, data) -- '$'
 	local bytes = tonumber(data)
 	if bytes < 0 then
@@ -25,14 +27,17 @@ redcmd[36] = function(fd, data) -- '$'
 	return true,string.sub(firstline,1,-3)
 end
 
+-- Simple Strings
 redcmd[43] = function(fd, data) -- '+'
 	return true,data
 end
 
+-- Errors
 redcmd[45] = function(fd, data) -- '-'
 	return false,data
 end
 
+-- Integers
 redcmd[58] = function(fd, data) -- ':'
 	-- todo: return string later
 	return true, tonumber(data)
@@ -64,7 +69,7 @@ redcmd[42] = function(fd, data)	-- '*'
 end
 
 -------------------
-
+-- auth 是密码, db是选择的数据库
 local function redis_login(auth, db)
 	if auth == nil and db == nil then
 		return
@@ -88,7 +93,7 @@ function redis.connect(db_conf)
 	}
 	-- try connect first only once
 	channel:connect(true)
-	return setmetatable( { channel }, meta )
+	return setmetatable( { channel }, meta )	-- [1] 为channel对象
 end
 
 function command:disconnect()

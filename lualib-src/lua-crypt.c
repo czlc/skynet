@@ -334,7 +334,7 @@ des_crypt( const uint32_t SK[32], const uint8_t input[8], uint8_t output[8] ) {
 	PUT_UINT32( X, output, 4 );
 }
 
-// 生成一个8字节的随机串
+/* 生成一个8字节的随机串 */
 static int
 lrandomkey(lua_State *L) {
 	char tmp[8];
@@ -460,6 +460,7 @@ Hash(const char * str, int sz, uint8_t key[8]) {
 	key[7] = (js_hash >> 24) & 0xff;
 }
 
+/* 将一个不定长的字符串打散成一个8字节的字符串 */
 static int
 lhashkey(lua_State *L) {
 	size_t sz = 0;
@@ -470,6 +471,7 @@ lhashkey(lua_State *L) {
 	return 1;
 }
 
+/* 将字符串内容格式化成16进制的字符串 */
 static int
 ltohex(lua_State *L) {
 	static char hex[] = "0123456789abcdef";
@@ -893,20 +895,20 @@ luaopen_crypt(lua_State *L) {
 		srandom(time(NULL));
 	}
 	luaL_Reg l[] = {
-		{ "hashkey", lhashkey },
-		{ "randomkey", lrandomkey },
-		{ "desencode", ldesencode }, // 双向，对n字节二进制串做des加密
-		{ "desdecode", ldesdecode }, // 双向，对des加密串做解密
-		{ "hexencode", ltohex },
-		{ "hexdecode", lfromhex },
-		{ "hmac64", lhmac64 }, // 单向，对8字节二进制串+secret做8字节信息摘要
-		{ "dhexchange", ldhexchange },
-		{ "dhsecret", ldhsecret },
-		{ "base64encode", lb64encode },
-		{ "base64decode", lb64decode },
-		{ "sha1", lsha1 }, // 单向，对n字节二进制串做20字节信息摘要
-		{ "hmac_sha1", lhmac_sha1 }, // 单向，对n字节二进制串+sectet做20字节信息摘要
-		{ "hmac_hash", lhmac_hash },
+		{ "hashkey", lhashkey },		/* 将一个不定长的字符串打散成一个8字节的字符串 */
+		{ "randomkey", lrandomkey },	/* 生成一个8字节的随机串，用于做私钥 */
+		{ "desencode", ldesencode },	/* 双向，根据secret对字符串做加密 */
+		{ "desdecode", ldesdecode },	/* 双向，根据secret对字符串做解密 */
+		{ "hexencode", ltohex },		/* 将目标字符串格式化成16进制字符串 */
+		{ "hexdecode", lfromhex },		/* 将16进制字符串格式化成目标字符串*/
+		{ "hmac64", lhmac64 },			/* 单向，对8字节二进制串(challenge)+secret做8字节信息摘要 */
+		{ "dhexchange", ldhexchange },	/* 生成一个公钥 */
+		{ "dhsecret", ldhsecret },		/* 私钥和对方公钥生成一个secret */
+		{ "base64encode", lb64encode },	/* 双向，base64编码 */
+		{ "base64decode", lb64decode },	/* 双向，base64解码 */
+		{ "sha1", lsha1 },				/* 单向，对n字节二进制串做20字节信息摘要 */
+		{ "hmac_sha1", lhmac_sha1 },	/* 单向，对n字节二进制串+sectet做20字节信息摘要 */
+		{ "hmac_hash", lhmac_hash },	/* 单向，对text+secret做8字节信息摘要 */
 		{ NULL, NULL },
 	};
 	luaL_newlib(L,l);

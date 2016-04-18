@@ -41,6 +41,7 @@ local function wakeup(db, key1, ...)
 	if q == nil then
 		return
 	end
+	-- "queue" 表明到了一个叶节点
 	if q[mode] == "queue" then
 		db[key1] = nil	-- 找到了从wait_queue中拿出去
 		if select("#", ...) ~= 1 then
@@ -62,7 +63,7 @@ function command.UPDATE(...)
 	if ret or value == nil then  -- ret表明之前有值，没有因此阻塞的，value == nil表明没有设置有效的值，也不用唤醒等待的协程
 		return ret
 	end
-	local q = wakeup(wait_queue, ...)
+	local q = wakeup(wait_queue, ...)	-- 获得wait队列
 	if q then
 		for _, response in ipairs(q) do
 			response(true,value)
@@ -72,15 +73,16 @@ end
 
 local function waitfor(db, key1, key2, ...)
 	if key2 == nil then
+		-- 表明key1是叶结点
 		-- push queue
 		local q = db[key1]
 		if q == nil then
-			q = { [mode] = "queue" }
+			q = { [mode] = "queue" }	-- queue 表明这属于叶结点
 			db[key1] = q
 		else
 			assert(q[mode] == "queue")
 		end
-		table.insert(q, skynet.response())
+		table.insert(q, skynet.response())	-- 等待此叶结点的协程
 	else
 		local q = db[key1]
 		if q == nil then

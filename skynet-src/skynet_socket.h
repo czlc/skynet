@@ -11,12 +11,14 @@ struct skynet_context;
 #define SKYNET_SOCKET_TYPE_UDP 6
 #define SKYNET_SOCKET_TYPE_WARNING 7
 
+/* socket 模块消息外派，发送给其它服务 */
 struct skynet_socket_message {
 	int type;		// 见上
 	int id;			// socket id
 	int ud;			// for accept, ud is listen id ; for data, ud is size of data 
-	char * buffer;	// padding类型的数据在skynet_socket_message之后 
+	char * buffer;	// 谁负责删除?
 };
+// padding类型的数据(string)在skynet_socket_message之后
 
 void skynet_socket_init();	// 创建socket资源
 void skynet_socket_exit();	// 退出socket线程
@@ -26,6 +28,7 @@ int skynet_socket_poll();	// breath
 int skynet_socket_send(struct skynet_context *ctx, int id, void *buffer, int sz);
 void skynet_socket_send_lowpriority(struct skynet_context *ctx, int id, void *buffer, int sz);
 int skynet_socket_listen(struct skynet_context *ctx, const char *host, int port, int backlog);
+/* 主动连接host:port */
 int skynet_socket_connect(struct skynet_context *ctx, const char *host, int port);
 int skynet_socket_bind(struct skynet_context *ctx, int fd);
 void skynet_socket_close(struct skynet_context *ctx, int id);

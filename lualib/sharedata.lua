@@ -9,6 +9,7 @@ end)
 
 local sharedata = {}
 
+-- obj 是box 后的
 local function monitor(name, obj, cobj)
 	local newobj = cobj
 	while true do
@@ -21,13 +22,14 @@ local function monitor(name, obj, cobj)
 end
 
 function sharedata.query(name)
-	local obj = skynet.call(service, "lua", "query", name)
+	local obj = skynet.call(service, "lua", "query", name)	-- 获得name对于table的cobj
 	local r = sd.box(obj)
 	skynet.send(service, "lua", "confirm" , obj)
 	skynet.fork(monitor,name, r, obj)
 	return r
 end
 
+-- 创建一个sharedata对象，v可以是一个table，一段lua代码，一个文件名或者是nil
 function sharedata.new(name, v)
 	skynet.call(service, "lua", "new", name, v)
 end

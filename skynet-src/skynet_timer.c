@@ -27,7 +27,7 @@ typedef void (*timer_execute_func)(void *ud,void *arg);
 
 struct timer_event {
 	uint32_t handle;
-	int session;
+	int session;		// 请求的 session
 };
 
 struct timer_node {
@@ -44,10 +44,10 @@ struct timer {
 	struct link_list near[TIME_NEAR];	// 倒计时 类似秒
 	struct link_list t[4][TIME_LEVEL];	// 倒计时 4个level类似 分钟/小时/天/月
 	struct spinlock lock;
-	uint32_t time;							// 当前时刻，8bit near + 4 * 6bit level，初始为0，大约497天之后溢出
-	uint32_t starttime;						// system time (s)，通过current溢出累加
-	uint64_t current;						// system time (10ms)，通过时间计数累加
-	uint64_t current_point;					// 当前计数时间 (10ms)，几乎不可能溢出，用于计算每次update的diff
+	uint32_t time;						// 当前时刻，8bit near + 4 * 6bit level，初始为0，大约497天之后溢出
+	uint32_t starttime;					// 系统启动时间(s), from 1970
+	uint64_t current;					// 计数时间 (10ms)，初始化为当前时间的秒以下部分，之后通过时间计数累加
+	uint64_t current_point;				// 当前系统时间 (10ms)，from 1970
 };
 // current和starttime似乎没有什么用，取得时候再算也行
 
@@ -75,17 +75,19 @@ add_node(struct timer *T,struct timer_node *node) {
 	uint32_t current_time=T->time;
 	
 	if ((time|TIME_NEAR_MASK)==(current_time|TIME_NEAR_MASK)) {
+		// 若高位相同，则置入near某段
 		link(&T->near[time&TIME_NEAR_MASK],node);
 	} else {
 		int i;
 		uint32_t mask=TIME_NEAR << TIME_LEVEL_SHIFT;
 		for (i=0;i<3;i++) {
+			// 看看是处于哪个高位区
 			if ((time|(mask-1))==(current_time|(mask-1))) {
 				break;
 			}
 			mask <<= TIME_LEVEL_SHIFT;
 		}
-
+		// 置入高区i的第n段
 		link(&T->t[i][((time>>(TIME_NEAR_SHIFT + i*TIME_LEVEL_SHIFT)) & TIME_LEVEL_MASK)],node);	
 	}
 }
@@ -167,6 +169,7 @@ timer_execute(struct timer *T) {
 	}
 }
 
+/* 每帧调用(centisecond) */
 static void 
 timer_update(struct timer *T) {
 	SPIN_LOCK(T);
@@ -207,6 +210,7 @@ timer_create_timer() {
 }
 
 // 添加一个计时器，time为相对时间，单位为10ms
+// session 为会话id
 int
 skynet_timeout(uint32_t handle, int time, int session) {
 	if (time <= 0) {
@@ -214,7 +218,7 @@ skynet_timeout(uint32_t handle, int time, int session) {
 		message.source = 0;
 		message.session = session;
 		message.data = NULL;
-		message.sz = (size_t)PTYPE_RESPONSE << MESSAGE_TYPE_SHIFT;
+		message.sz = (size_t)PTYPE_RESPONSE << MESSAGE_TYPE_SHIFT;	// 回应消息
 
 		if (skynet_context_push(handle, &message)) {
 			return -1;
@@ -230,6 +234,7 @@ skynet_timeout(uint32_t handle, int time, int session) {
 }
 
 // centisecond: 1/100 second
+/* 获得当前时间(基于1970.01.01)，秒部分存于sec，秒以下部分存于cs，单位是centisecond */
 static void
 systime(uint32_t *sec, uint32_t *cs) {
 #if !defined(__APPLE__)
@@ -239,14 +244,14 @@ systime(uint32_t *sec, uint32_t *cs) {
 	*cs = (uint32_t)(ti.tv_nsec / 10000000);
 #else
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	gettimeofday(&tv, NULL);	/* 自1970年1月1日起始的时间 */
 	*sec = tv.tv_sec;
 	*cs = tv.tv_usec / 10000;
 #endif
 }
 
-// 64bit不用考虑溢出
-// 此函数应该取系统启动之后流逝的时间
+
+/* 获得当前时间(基于1970.01.01)单位为centisecond */
 static uint64_t
 gettime() {
 	uint64_t t;
@@ -271,6 +276,7 @@ skynet_updatetime(void) {
 		skynet_error(NULL, "time diff error: change from %lld to %lld", cp, TI->current_point);
 		TI->current_point = cp;
 	} else if (cp != TI->current_point) {
+		// 有时间流逝
 		uint32_t diff = (uint32_t)(cp - TI->current_point);
 		TI->current_point = cp;
 		TI->current += diff;

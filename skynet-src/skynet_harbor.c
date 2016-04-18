@@ -8,14 +8,15 @@
 #include <stdio.h>
 #include <assert.h>
 
-static struct skynet_context * REMOTE = 0;
+static struct skynet_context * REMOTE = 0;	/* harbor 服务 */
 static unsigned int HARBOR = ~0;
 
+/* 发送本节点的HARBOR去，由它转发到其它节点去 */
 void 
 skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session) {
 	int type = rmsg->sz >> MESSAGE_TYPE_SHIFT;
-	rmsg->sz &= MESSAGE_TYPE_MASK;
-	assert(type != PTYPE_SYSTEM && type != PTYPE_HARBOR && REMOTE);
+	rmsg->sz &= MESSAGE_TYPE_MASK;	// 还原size，去掉type部分
+	assert(type != PTYPE_SYSTEM && type != PTYPE_HARBOR && REMOTE);	// PTYPE_SYSTEM和PTYPE_HARBOR只能发给本地服务
 	skynet_context_send(REMOTE, rmsg, sizeof(*rmsg) , source, type , session);
 }
 
@@ -31,6 +32,7 @@ skynet_harbor_init(int harbor) {
 	HARBOR = (unsigned int)harbor << HANDLE_REMOTE_SHIFT;
 }
 
+/* 注册harbor服务 */
 void
 skynet_harbor_start(void *ctx) {
 	// the HARBOR must be reserved to ensure the pointer is valid.

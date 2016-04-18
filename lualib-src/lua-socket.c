@@ -1,3 +1,4 @@
+/* 和lua-netpack不同，它并没有分包，而是到了一个网络包无论大小就先存下来，取得时候需要指定大小或者根据分隔符 */
 #include "skynet_malloc.h"
 
 #include <stdlib.h>
@@ -19,17 +20,19 @@
 #define LARGE_PAGE_NODE 12
 #define BUFFER_LIMIT (256 * 1024)
 
+// 一个node表示一个数据包
 struct buffer_node {
-	char * msg;
-	int sz;
-	struct buffer_node *next;
+	char * msg;		// 数据包内容
+	int sz;			// 数据包内容长度
+	struct buffer_node *next;	// 下一个数据包
 };
 
+// 保存一个socket上的数据包列表
 struct socket_buffer {
-	int size;					// 此socket接受到的数据大小
-	int offset;					// 当前buffer_node的offset
-	struct buffer_node *head;
-	struct buffer_node *tail;
+	int size;					// 此socket接受到的未读数据大小
+	int offset;					// 当前buffer_node的已读偏移
+	struct buffer_node *head;	// 数据包列表表头
+	struct buffer_node *tail;	// 数据包列表表尾
 };
 
 static int
@@ -47,7 +50,7 @@ lfreepool(lua_State *L) {
 	return 0;
 }
 
-// 创建一个大小为sz的(buffer_node *)的userdata
+/* 创建内存池(buffers chunk)，拥有sz个buffer_node */
 static int
 lnewpool(lua_State *L, int sz) {
 	struct buffer_node * pool = lua_newuserdata(L, sizeof(struct buffer_node) * sz);
@@ -66,6 +69,7 @@ lnewpool(lua_State *L, int sz) {
 	return 1;
 }
 
+/* 创建一个socket 收发缓冲 */
 static int
 lnewbuffer(lua_State *L) {
 	struct socket_buffer * sb = lua_newuserdata(L, sizeof(*sb));	
@@ -78,19 +82,19 @@ lnewbuffer(lua_State *L) {
 }
 
 /*
-	脚本收到数据用c保存
+	脚本收到数据包，保存下来，返回现在收到却为被读取的总的大小
 	userdata send_buffer
 	table pool
 	lightuserdata msg
 	int size
 
-	return size
+	return size(此socket上总的未读字节大小)
 
 	Comment: The table pool record all the buffers chunk, 
 	and the first index [1] is a lightuserdata : free_node. We can always use this pointer for struct buffer_node .
 	The following ([2] ...)  userdatas in table pool is the buffer chunk (for struct buffer_node), 
-	we never free them until the VM closed. The size of first chunk ([2]) is 8 struct buffer_node,
-	and the second size is 16 ... The largest size of chunk is LARGE_PAGE_NODE (4096)
+	we never free them until the VM closed(因为是userdata，可以自动释放，但是其下的msg需要逐一释放:见lnewpool). The size of first
+	chunk ([2]) is 8 struct buffer_node,and the second size is 16 ... The largest size of chunk is LARGE_PAGE_NODE (4096)
 
 	lpushbbuffer will get a free struct buffer_node from table pool, and then put the msg/size in it.
 	lpopbuffer return the struct buffer_node back to table pool (By calling return_free_node).
@@ -108,29 +112,34 @@ lpushbuffer(lua_State *L) {
 	int pool_index = 2;
 	luaL_checktype(L,pool_index,LUA_TTABLE);
 	int sz = luaL_checkinteger(L,4);
-	lua_rawgeti(L,pool_index,1);
+	lua_rawgeti(L,pool_index,1);	// 获得buffer_pool的第一个元素
 	struct buffer_node * free_node = lua_touserdata(L,-1);	// sb poolt msg size free_node
 	lua_pop(L,1);
 	if (free_node == NULL) {
-		int tsz = lua_rawlen(L,pool_index);
+		int tsz = lua_rawlen(L,pool_index);	// 查看buffer_pool的长度
 		if (tsz == 0)
 			tsz++;
+		// size 是buffer_node个数
 		int size = 8;
 		if (tsz <= LARGE_PAGE_NODE-3) {
+			// 前面8个size逐渐递增:16,32,....1024
 			size <<= tsz;
 		} else {
+			// 8个之后的都是固定4096一个
 			size <<= LARGE_PAGE_NODE-3;
 		}
-		lnewpool(L, size);	
+		lnewpool(L, size);	// 创建一个buffer_node 的数组
 		free_node = lua_touserdata(L,-1);
-		lua_rawseti(L, pool_index, tsz+1);
+		lua_rawseti(L, pool_index, tsz+1);	// 占位用,这样可以逐级分配不同数目的buffer_node
 	}
+	// free_node 被征用，将它的下一个压入
 	lua_pushlightuserdata(L, free_node->next);	
 	lua_rawseti(L, pool_index, 1);	// sb poolt msg size
 	free_node->msg = msg;
 	free_node->sz = sz;
 	free_node->next = NULL;
 
+	// 加入socket_buffer 列表
 	if (sb->head == NULL) {
 		assert(sb->tail == NULL);
 		sb->head = sb->tail = free_node;
@@ -145,7 +154,7 @@ lpushbuffer(lua_State *L) {
 	return 1;
 }
 
-// 读完了，可以释放了
+// 读完了，可以释放了此节点到free_node列表中去
 static void
 return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	struct buffer_node *free_node = sb->head;
@@ -154,7 +163,7 @@ return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	if (sb->head == NULL) {
 		sb->tail = NULL;
 	}
-	// 释放的节点挂到buffer_pool[1]中去
+	// free_node 释放清空后加入到buffer_pool[1]
 	lua_rawgeti(L,pool,1);
 	free_node->next = lua_touserdata(L,-1);
 	lua_pop(L,1);
@@ -166,7 +175,9 @@ return_free_node(lua_State *L, int pool, struct socket_buffer *sb) {
 	lua_rawseti(L, pool, 1);
 }
 
-// skip 表示sz大小中有多少是被忽略的，不用加到缓存中的
+// skip 表示sz大小中有多少是被忽略的，不用加到缓存中的，比如
+// 调用到这里说明sb里面有足够的数据(>= sz)
+// 可以跨越多个数据包
 static void
 pop_lstring(lua_State *L, struct socket_buffer *sb, int sz, int skip) {
 	struct buffer_node * current = sb->head;
@@ -184,7 +195,8 @@ pop_lstring(lua_State *L, struct socket_buffer *sb, int sz, int skip) {
 	luaL_Buffer b;
 	luaL_buffinit(L, &b);
 	for (;;) {
-		int bytes = current->sz - sb->offset;	// 先把此node剩余的数据读完
+		// 先从此node的剩余数据读
+		int bytes = current->sz - sb->offset;	// 此node的剩余未读长度
 		if (bytes >= sz) {
 			if (sz > skip) {
 				luaL_addlstring(&b, current->msg + sb->offset, sz - skip);
@@ -232,6 +244,7 @@ lheader(lua_State *L) {
 	userdata send_buffer
 	table pool
 	integer sz 
+	从socket 上读取sz个字节
  */
 static int
 lpopbuffer(lua_State *L) {
@@ -256,6 +269,7 @@ lpopbuffer(lua_State *L) {
 /*
 	userdata send_buffer
 	table pool
+	清空一个socket收到的数据包
  */
 static int
 lclearbuffer(lua_State *L) {
@@ -271,6 +285,7 @@ lclearbuffer(lua_State *L) {
 	return 0;
 }
 
+/* 读入指定socket收到的所有数据 */
 static int
 lreadall(lua_State *L) {
 	struct socket_buffer * sb = lua_touserdata(L, 1);
@@ -286,7 +301,7 @@ lreadall(lua_State *L) {
 		return_free_node(L,2,sb);
 	}
 	luaL_pushresult(&b);
-	sb->size = 0;
+	sb->size = 0;	// 全部读完了
 	return 1;
 }
 
@@ -298,14 +313,16 @@ ldrop(lua_State *L) {
 	return 0;
 }
 
+/* 从数据包node的frome字节处开始读， 看是否是分割字符串 sep*/
 static bool
 check_sep(struct buffer_node * node, int from, const char *sep, int seplen) {
 	for (;;) {
-		int sz = node->sz - from;
+		int sz = node->sz - from;	// 此数据包还剩多少字节可以读
 		if (sz >= seplen) {
 			return memcmp(node->msg+from,sep,seplen) == 0;
 		}
 		if (sz > 0) {
+			// 是否部分相同，如果相同继续找下一个节点
 			if (memcmp(node->msg + from, sep, sz)) {
 				return false;
 			}
@@ -321,6 +338,8 @@ check_sep(struct buffer_node * node, int from, const char *sep, int seplen) {
 	userdata send_buffer
 	table pool , nil for check
 	string sep
+
+	检查收到的数据包中是否包括分隔符，如果包括则返回字符串或者仅仅是检测就返回检测结果
  */
 static int
 lreadline(lua_State *L) {
@@ -331,19 +350,20 @@ lreadline(lua_State *L) {
 	// only check
 	bool check = !lua_istable(L, 2);
 	size_t seplen = 0;
-	const char *sep = luaL_checklstring(L,3,&seplen);
+	const char *sep = luaL_checklstring(L,3,&seplen);	// 分隔符
 	int i;
 	struct buffer_node *current = sb->head;
 	if (current == NULL)
 		return 0;
-	int from = sb->offset;
-	int bytes = current->sz - from;
+	int from = sb->offset;				// 从数据包current的frome开始读
+	int bytes = current->sz - from;		// 数据包current还剩余多少字节可以读
 	for (i=0;i<=sb->size - (int)seplen;i++) {
+		// 遍历sb中所有可读的字节，看是否遇到分割字符串
 		if (check_sep(current, from, sep, seplen)) {
 			if (check) {
-				lua_pushboolean(L,true);
+				lua_pushboolean(L,true);	// 表示至少有一个分割字符串
 			} else {
-				pop_lstring(L, sb, i+seplen, seplen);
+				pop_lstring(L, sb, i+seplen, seplen);	// 压入目标字符串
 				sb->size -= i+seplen;
 			}
 			return 1;
@@ -351,6 +371,7 @@ lreadline(lua_State *L) {
 		++from;
 		--bytes;
 		if (bytes == 0) {
+			// 此数据包读完了，检查下一个数据包
 			current = current->next;
 			from = 0;
 			if (current == NULL)
@@ -379,6 +400,7 @@ lstr2p(lua_State *L) {
 	integer size
 
 	return type n1 n2 ptr_or_string
+	解包skynet_socket.c发过来的PTYPE_SOCKET消息，见skynet_socket.c : forward_message
 */
 static int
 lunpack(lua_State *L) {
@@ -386,9 +408,9 @@ lunpack(lua_State *L) {
 	int size = luaL_checkinteger(L,2);
 
 	lua_pushinteger(L, message->type);
-	lua_pushinteger(L, message->id);
-	lua_pushinteger(L, message->ud);
-	if (message->buffer == NULL) {		// 见forward_message中的padding
+	lua_pushinteger(L, message->id);	// socket id
+	lua_pushinteger(L, message->ud);	// for accept, ud is new connection id ; for data, ud is size of data 
+	if (message->buffer == NULL) {		// 见forward_message中的padding，表示是字符串
 		lua_pushlstring(L, (char *)(message+1),size - sizeof(*message));
 	} else {
 		lua_pushlightuserdata(L, message->buffer);
@@ -404,6 +426,7 @@ lunpack(lua_State *L) {
 	return 4;
 }
 
+/*拆分addr为地址和端口，返回host*/
 static const char *
 address_port(lua_State *L, char *tmp, const char * addr, int port_index, int *port) {
 	const char * host;
@@ -504,6 +527,7 @@ count_size(lua_State *L, int index) {
 	return tlen;
 }
 
+/* 将一个string table序列化成一个字符串 */
 static void
 concat_table(lua_State *L, int index, void *buffer, size_t tlen) {
 	char *ptr = buffer;
@@ -526,6 +550,7 @@ concat_table(lua_State *L, int index, void *buffer, size_t tlen) {
 	lua_pop(L,1);
 }
 
+/* 将index处的lua元素转储为一个字符串， sz是返回字符串的长度 */
 static void *
 get_buffer(lua_State *L, int index, int *sz) {
 	void *buffer;
@@ -534,11 +559,13 @@ get_buffer(lua_State *L, int index, int *sz) {
 		size_t len;
 	case LUA_TUSERDATA:
 	case LUA_TLIGHTUSERDATA:
+		// 如果是这2种类型，还需要传入一个size
 		buffer = lua_touserdata(L,index);
 		*sz = luaL_checkinteger(L,index+1);
 		break;
 	case LUA_TTABLE:
 		// concat the table as a string
+		// 此表规定了只能是默认索引，而且每一项都是字符串
 		len = count_size(L, index);
 		buffer = skynet_malloc(len);
 		concat_table(L, index, buffer, len);
@@ -600,6 +627,7 @@ lnodelay(lua_State *L) {
 	return 0;
 }
 
+/* 创建一个udp socket id，传入addr和port */
 static int
 ludp(lua_State *L) {
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
@@ -644,7 +672,7 @@ static int
 ludp_send(lua_State *L) {
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
 	int id = luaL_checkinteger(L, 1);
-	const char * address = luaL_checkstring(L, 2);
+	const char * address = luaL_checkstring(L, 2);	// udp 地址
 	int sz = 0;
 	void *buffer = get_buffer(L, 3, &sz);
 	int err = skynet_socket_udp_send(ctx, id, address, buffer, sz);
@@ -654,24 +682,28 @@ ludp_send(lua_State *L) {
 	return 1;
 }
 
+/* 将udp地址解析为可读的addr和port */
 static int
 ludp_address(lua_State *L) {
 	size_t sz = 0;
 	const uint8_t * addr = (const uint8_t *)luaL_checklstring(L, 1, &sz);
 	uint16_t port = 0;
 	memcpy(&port, addr+1, sizeof(uint16_t));
-	port = ntohs(port);
+	port = ntohs(port);	/* converts the unsigned integer arg from network byte order to host byte order. */
 	const void * src = addr+3;
 	char tmp[256];
 	int family;
 	if (sz == 1+2+4) {
+		// 1 type, 2 port, 4 ipv4
 		family = AF_INET;
 	} else {
+		// 1 type, 2 port, 16 ipv6
 		if (sz != 1+2+16) {
 			return luaL_error(L, "Invalid udp address");
 		}
 		family = AF_INET6;
 	}
+	// inet_ntop converts the network address structure src in the af address family into a character string.
 	if (inet_ntop(family, src, tmp, sizeof(tmp)) == NULL) {
 		return luaL_error(L, "Invalid udp address");
 	}

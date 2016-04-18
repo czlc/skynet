@@ -1,12 +1,14 @@
 -- gate 定位于高效管理大量的外部 tcp 长连接
 -- http://blog.codingnow.com/2014/04/skynet_gate_lua_version.html
+-- gateserver部分主要处理网络连接和消息，屏蔽了socket层，而gate是在其上的封装，提供了供外界使用的接口
+-- 消息转发
 local skynet = require "skynet"
 local gateserver = require "snax.gateserver"
 local netpack = require "netpack"
 
 local watchdog
-local connection = {}	-- fd -> connection : { fd , client, agent , ip, mode }
-local forwarding = {}	-- agent -> connection
+local connection = {}	-- fd -> connection : { fd , client, agent , ip, mode }，主要用于向agent转发消息，而无需通过watchdog
+local forwarding = {}	-- agent -> connection，貌似暂时没用
 
 skynet.register_protocol {
 	name = "client",
@@ -18,7 +20,7 @@ local handler = {}
 -- 如果你希望在监听端口打开的时候，做一些初始化操作，可以提供 open 这个方法。source 是请求来源地址，conf 是开启 gate 服务的参数表。
 -- conf = {address, prot, maxclient}
 function handler.open(source, conf)
-	watchdog = conf.watchdog or source
+	watchdog = conf.watchdog or source	-- watchdog 是外界申请开启此socket的服务，之后收到消息会转发过去
 end
 
 function handler.message(fd, msg, sz)
@@ -34,6 +36,7 @@ end
 
 -- 当一个新连接建立后，connect 方法被调用。传入连接的 socket fd 和
 -- 新连接的 ip 地址（通常用于 log 输出）。
+-- 此时还不能通信，需要start之后
 function handler.connect(fd, addr)
 	local c = {
 		fd = fd,

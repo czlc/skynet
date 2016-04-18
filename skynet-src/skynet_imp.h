@@ -7,8 +7,8 @@ struct skynet_config {
 	const char * daemon;		// daemon name
 	const char * module_path;	// cpath，各个service的so文件目录
 	const char * bootstrap;		// 启动服务
-	const char * logger;		// log文件名
-	const char * logservice;
+	const char * logger;		// logservice 参数
+	const char * logservice;	// log的服务，见config.userlog，默认配置是service_logger，可以配置成snlua
 };
 
 #define THREAD_WORKER 0

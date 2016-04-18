@@ -7,16 +7,17 @@ cache.mode "OFF"	-- turn off codecache, because CMD.new may load data file
 local NORET = {}
 local pool = {}
 local pool_count = {}
-local objmap = {}
+local objmap = {}			-- [cobj] = { value = tbl , obj = cobj, watch = {} }，便于查找
 
+-- tbl 是需要共享的lua table
 local function newobj(name, tbl)
 	assert(pool[name] == nil)
-	local cobj = sharedata.host.new(tbl)
+	local cobj = sharedata.host.new(tbl)	-- 将tbl保存为可共享的lightuserdata
 	sharedata.host.incref(cobj)
 	local v = { value = tbl , obj = cobj, watch = {} }
 	objmap[cobj] = v
 	pool[name] = v
-	pool_count[name] = { n = 0, threshold = 16 }
+	pool_count[name] = { n = 0, threshold = 16 }	-- n 是监控者数目，threshold是监控者上限
 end
 
 local function collectobj()
@@ -42,13 +43,16 @@ function CMD.new(name, t)
 	local dt = type(t)
 	local value
 	if dt == "table" then
+		-- 可以是一张 lua table ，但不可以有环。且 key 必须是字符串和正整数
 		value = t
 	elseif dt == "string" then
 		value = setmetatable({}, env_mt)
 		local f
 		if t:sub(1,1) == "@" then
-			f = assert(loadfile(t:sub(2),"bt",value))
+			-- 也可以是一个文件
+			f = assert(loadfile(t:sub(2),"bt",value))	-- Q:liuchang 为何不直接传入_ENV，因为代码中可能会修改当前_ENV?
 		else
+			-- 还可以是一段 lua 文本代码
 			f = assert(load(t, "=" .. name, "bt", value))
 		end
 		local _, ret = assert(skynet.pcall(f))
@@ -76,6 +80,7 @@ function CMD.delete(name)
 	end
 end
 
+-- 获得指定的cobj
 function CMD.query(name)
 	local v = assert(pool[name])
 	local obj = v.obj
@@ -83,6 +88,7 @@ function CMD.query(name)
 	return v.obj
 end
 
+-- 查询结束，减引用
 function CMD.confirm(cobj)
 	if objmap[cobj] then
 		sharedata.host.decref(cobj)
@@ -115,6 +121,7 @@ local function check_watch(queue)
 	local n = 0
 	for k,response in pairs(queue) do
 		if not response "TEST" then
+			-- 统计无效的监控
 			queue[k] = nil
 			n = n + 1
 		end
@@ -122,6 +129,7 @@ local function check_watch(queue)
 	return n
 end
 
+-- 监控 cobj是否有变化
 function CMD.monitor(name, obj)
 	local v = assert(pool[name])
 	if obj ~= v.obj then

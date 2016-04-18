@@ -41,7 +41,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib", "lualib", "{4458D4
 		lualib\loader.lua = lualib\loader.lua
 		lualib\md5.lua = lualib\md5.lua
 		lualib\mongo.lua = lualib\mongo.lua
-		lualib\mqueue.lua = lualib\mqueue.lua
 		lualib\multicast.lua = lualib\multicast.lua
 		lualib\mysql.lua = lualib\mysql.lua
 		lualib\redis.lua = lualib\redis.lua
@@ -76,7 +75,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib-src", "lualib-src", 
 		lualib-src\lua-skynet.c = lualib-src\lua-skynet.c
 		lualib-src\lua-socket.c = lualib-src\lua-socket.c
 		lualib-src\lua-stm.c = lualib-src\lua-stm.c
-		lualib-src\lua_mysqlaux.c = lualib-src\lua_mysqlaux.c
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service", "service", "{15E53223-24FD-4505-8332-180C2B6233CD}"
@@ -103,9 +101,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service", "service", "{15E5
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service-src", "service-src", "{231CCE9A-E800-4223-B272-DA7C433548D9}"
 	ProjectSection(SolutionItems) = preProject
-		service-src\databuffer.h = service-src\databuffer.h
-		service-src\hashid.h = service-src\hashid.h
-		service-src\service_gate.c = service-src\service_gate.c
 		service-src\service_harbor.c = service-src\service_harbor.c
 		service-src\service_logger.c = service-src\service_logger.c
 		service-src\service_snlua.c = service-src\service_snlua.c

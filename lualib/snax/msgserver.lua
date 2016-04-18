@@ -106,14 +106,15 @@ function server.logout(username)
 	end
 end
 
+-- loginserver发过来的用户登录请求
 function server.login(username, secret)
 	assert(user_online[username] == nil)
 	user_online[username] = {
-		secret = secret,
-		version = 0,
-		index = 0,
+		secret = secret,	-- 登陆环节获得的共识 serect 
+		version = 0,		-- 握手的时候生成，至少是 1 ，每次重连都需要比之前的大。这样可以保证握手包不会被人恶意截获复用。
+		index = 0,			-- 请求序号
 		username = username,
-		response = {},	-- response cache
+		response = {},		-- response cache 缓存处理的结果
 	}
 end
 
@@ -190,7 +191,7 @@ function server.start(conf)
 		u.version = idx
 		u.fd = fd
 		u.ip = addr
-		connection[fd] = u
+		connection[fd] = u	-- username 下之前缓存的消息回应都会挂接过来
 	end
 
 	local function auth(fd, addr, msg, sz)
@@ -222,11 +223,14 @@ function server.start(conf)
 			local max = 0
 			local response = u.response
 			for k,p in pairs(response) do
+				-- k 是session
 				if p[1] == nil then
-					-- request complete, check expired
+					-- request complete, check expired，发送给客户端之后p[1]会设置为nil
 					if p[4] < expired_number then
+						-- 早期的都删除
 						response[k] = nil
 					else
+						-- 现有的向前挪,通过设置u.index
 						p[4] = p[4] - expired_number
 						if p[4] > max then
 							max = p[4]
@@ -238,18 +242,21 @@ function server.start(conf)
 		end
 	end
 
+	-- 处理客户端请求
 	local function do_request(fd, message)
 		local u = assert(connection[fd], "invalid fd")
-		local session = string.unpack(">I4", message, -4)
-		message = message:sub(1,-5)
+		local session = string.unpack(">I4", message, -4)	-- 最后4字节是session
+		message = message:sub(1,-5)	-- 前面的是message
 		local p = u.response[session]
 		if p then
 			-- session can be reuse in the same connection
 			if p[3] == u.version then
+				-- 并没有重连，可能是客户端再次请求，直接清空之前缓存的回应，重新相应新的请求
 				local last = u.response[session]
 				u.response[session] = nil
 				p = nil
 				if last[2] == nil then
+					-- 上次请求还没生成回应，同session再次请求，造成冲突
 					local error_msg = string.format("Conflict session %s", crypt.hexencode(session))
 					skynet.error(error_msg)
 					error(error_msg)
@@ -260,7 +267,7 @@ function server.start(conf)
 		if p == nil then
 			p = { fd }
 			u.response[session] = p
-			local ok, result = pcall(conf.request_handler, u.username, message)
+			local ok, result = pcall(conf.request_handler, u.username, message)	-- 可能调用到agent去处理逻辑，得到处理的结果
 			-- NOTICE: YIELD here, socket may close.
 			result = result or ""
 			if not ok then
@@ -287,13 +294,15 @@ function server.start(conf)
 		u.index = u.index + 1
 		-- the return fd is p[1] (fd may change by multi request) check connect
 		fd = p[1]
+		-- 可能这个时候已经断开连接
 		if connection[fd] then
-			socketdriver.send(fd, p[2])
+			socketdriver.send(fd, p[2])	-- 通知客户端处理结果
 		end
-		p[1] = nil
-		retire_response(u)
+		p[1] = nil	-- 已经通知这个fd的客户端了，重连的话p[1]也会改变
+		retire_response(u)	-- 保存请求，以便重连后发生
 	end
 
+	-- 处理客户端请求
 	local function request(fd, msg, sz)
 		local message = netpack.tostring(msg, sz)
 		local ok, err = pcall(do_request, fd, message)
@@ -309,7 +318,7 @@ function server.start(conf)
 	function handler.message(fd, msg, sz)
 		local addr = handshake[fd]
 		if addr then
-			-- 第一次收到消息做个验证
+			-- 当一个连接接入后，第一个包是握手包
 			auth(fd,addr,msg,sz)
 			handshake[fd] = nil
 		else

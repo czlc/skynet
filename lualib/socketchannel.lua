@@ -30,13 +30,13 @@ function socket_channel.channel(desc)
 		__port = assert(desc.port),		-- 端口
 		__backup = desc.backup,			-- 备用地址列表
 		__auth = desc.auth,				-- 验证函数
-		__response = desc.response,		-- It's for session mode
-		__request = {},					-- request seq { response func or session }	-- It's for order mode 请求序列，和__result一一对应
-		__thread = {},					-- coroutine seq or session->coroutine map
-		__result = {},					-- response result { coroutine -> result }
-		__result_data = {},
+		__response = desc.response,		-- It's for session mode，函数用于接收并处理请求结果，对于session mode来说，返回的session需要此函数才能得到，Q:liuchang 因此需要统一成一个函数，而不是一个请求一个回调？
+		__request = {},					-- [i] = response，用于order模式，表明回应回调函数队列
+		__thread = {},					-- [sesion/i] = co，用于session/order模式，表明请求对应的挂起协程，用于数据到达的时候唤醒
+		__result = {},					-- [co] = result，用于session/order模式，表明协程处理结果是否异常
+		__result_data = {},				-- [co] = {data}，用于session模式，表明回应的处理结果
 		__connecting = {},				-- 正在连接的协程，如果有多个服务请求连接，只有一个真正尝试，其余的都在wait
-		__sock = false,					-- 连接fd的封装，channel_socket_meta
+		__sock = false,					-- 连接成功后__sock为table，是fd(socket id)的封装，[1]为fd，__index = channel_socket_meta，使其有读写功能
 		__closed = false,				-- true为正在关闭socket
 		__authcoroutine = false,
 		__nodelay = desc.nodelay,
@@ -93,7 +93,7 @@ local function dispatch_by_session(self)
 	local response = self.__response
 	-- response() return session
 	while self.__sock do
-		local ok , session, result_ok, result_data, padding = pcall(response, self.__sock)
+		local ok , session, result_ok, result_data, padding = pcall(response, self.__sock)	-- 阻塞等待任何回应，padding表示还有后续数据
 		if ok and session then
 			local co = self.__thread[session]	-- 看是响应哪个请求，相应等待的协程可以放行了
 			if co then
@@ -139,6 +139,8 @@ local function pop_response(self)
 	end
 end
 
+-- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
+--			对于session类型来说是session，根据session来找到原请求
 local function push_response(self, response, co)
 	if self.__response then
 		-- response is session
@@ -162,7 +164,7 @@ local function dispatch_by_order(self)
 			wakeup_all(self, errmsg)
 			break
 		end
-		local ok, result_ok, result_data, padding = pcall(func, self.__sock)
+		local ok, result_ok, result_data, padding = pcall(func, self.__sock)	-- 阻塞读取结果，padding 表明还有后续数据
 		if ok then
 			if padding and result_ok then
 				-- if padding is true, wait for next result_data
@@ -171,6 +173,7 @@ local function dispatch_by_order(self)
 				self.__result_data[co] = result
 				table.insert(result, result_data)
 			else
+				-- 没有后续数据了，可以唤醒之前因为请求挂起来的协程
 				self.__result[co] = result_ok
 				if result_ok and self.__result_data[co] then
 					table.insert(self.__result_data[co], result_data)
@@ -196,8 +199,10 @@ end
 
 local function dispatch_function(self)
 	if self.__response then
+		-- sission mode
 		return dispatch_by_session
 	else
+		-- order mode
 		return dispatch_by_order
 	end
 end
@@ -230,6 +235,7 @@ local function connect_once(self)
 	assert(not self.__sock and not self.__authcoroutine)
 	local fd,err = socket.open(self.__host, self.__port)
 	if not fd then
+		-- 连接不成功会试图去连接备份地址
 		fd = connect_backup(self)
 		if not fd then
 			return false, err
@@ -239,8 +245,8 @@ local function connect_once(self)
 		socketdriver.nodelay(fd)
 	end
 
-	self.__sock = setmetatable( {fd} , channel_socket_meta )
-	self.__dispatch_thread = skynet.fork(dispatch_function(self), self) -- 开启一个线程来处理请求
+	self.__sock = setmetatable( {fd} , channel_socket_meta )			-- self._sock[1] 为fd即 socket id
+	self.__dispatch_thread = skynet.fork(dispatch_function(self), self) -- 开启一个协程循环来处理请求
 
 	if self.__auth then
 		self.__authcoroutine = coroutine.running()
@@ -263,6 +269,7 @@ local function connect_once(self)
 	return true
 end
 
+-- once 表示只尝试连接一次，否则会频繁去连
 local function try_connect(self , once)
 	local t = 0
 	while not self.__closed do
@@ -321,6 +328,7 @@ local function block_connect(self, once)
 		err = try_connect(self, once)
 		self.__connecting[1] = nil
 		for i=2, #self.__connecting do
+			-- 连接成功唤醒所有等待连接的协程
 			local co = self.__connecting[i]
 			self.__connecting[i] = nil
 			skynet.wakeup(co)
@@ -351,9 +359,11 @@ function channel:connect(once)
 	return block_connect(self, once)
 end
 
+-- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
+--			对于session类型来说是session，根据session来找到原请求
 local function wait_for_response(self, response)
 	local co = coroutine.running()
-	push_response(self, response, co)
+	push_response(self, response, co)	-- 压入回调
 	skynet.wait(co)
 
 	local result = self.__result[co]
@@ -376,6 +386,11 @@ end
 local socket_write = socket.write
 local socket_lwrite = socket.lwrite
 
+-- request 为请求内容
+-- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
+--			对于session类型来说是session，根据session来找到原请求
+
+-- 阻塞函数，但是可以在不同的协程同时调用
 function channel:request(request, response, padding)
 	assert(block_connect(self, true))	-- connect once
 	local fd = self.__sock[1]

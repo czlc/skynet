@@ -1,3 +1,4 @@
+/* hook中通过实现malloc同名api来重载libc的实现，这在macos下行不通 */
 #ifndef skynet_malloc_h
 #define skynet_malloc_h
 
@@ -8,6 +9,7 @@
 #define skynet_realloc realloc
 #define skynet_free free
 
+/* 函数声明，避免警告 */
 void * skynet_malloc(size_t sz);
 void * skynet_calloc(size_t nmemb,size_t size);
 void * skynet_realloc(void *ptr, size_t size);

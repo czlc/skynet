@@ -19,18 +19,20 @@ struct handle_name {
 struct handle_storage {
 	struct rwlock lock;
 
-	uint32_t harbor;
-	uint32_t handle_index;
-	int slot_size;
-	struct skynet_context ** slot;
+	uint32_t harbor;					// cnfig定义的harbor id，并做了左移到高位处理
+	uint32_t handle_index;				// 用于分配handle
+	int slot_size;						// skynet_context 数组大小，它总是2的n次方，这样它的数-1就可以用作MASK，这样扩展的时候不会和前面的冲突
+	struct skynet_context ** slot;		// skynet_context 数组
 	
-	int name_cap;
-	int name_count;
-	struct handle_name *name;
+	int name_cap;						// handle->name对 数组大小
+	int name_count;						// 已有的handle->name对 数
+	struct handle_name *name;			// handle->name对 数组
 };
 
 static struct handle_storage *H = NULL;
 
+/* 注册一个ctx，并返回其句柄
+http://blog.codingnow.com/2015/04/handlemap.html */
 uint32_t
 skynet_handle_register(struct skynet_context *ctx) {
 	struct handle_storage *s = H;
@@ -45,19 +47,23 @@ skynet_handle_register(struct skynet_context *ctx) {
 			uint32_t handle = (i+s->handle_index) & HANDLE_MASK;
 			int hash = handle & (s->slot_size-1);
 			if (s->slot[hash] == NULL) {
+				// 找到一个坑
 				s->slot[hash] = ctx;
 				s->handle_index = handle + 1;
 
 				rwlock_wunlock(&s->lock);
 
+				// 高位添上harbor id
 				handle |= s->harbor;
 				return handle;
 			}
 		}
+		// 实在找不到坑了，扩大一倍再重新找
 		assert((s->slot_size*2 - 1) <= HANDLE_MASK);
 		struct skynet_context ** new_slot = skynet_malloc(s->slot_size * 2 * sizeof(struct skynet_context *));
 		memset(new_slot, 0, s->slot_size * 2 * sizeof(struct skynet_context *));
 		for (i=0;i<s->slot_size;i++) {
+			// 重新hash， 这样虽然会浪费一些 id ，但是可以保证 hash 表类的 key 永远不发生碰撞
 			int hash = skynet_context_handle(s->slot[i]) & (s->slot_size * 2 - 1);
 			assert(new_slot[hash] == NULL);
 			new_slot[hash] = s->slot[i];
@@ -68,6 +74,7 @@ skynet_handle_register(struct skynet_context *ctx) {
 	}
 }
 
+/* 从handle集合中删除指定服务的handle，并释放其引用计数 */
 int
 skynet_handle_retire(uint32_t handle) {
 	int ret = 0;
@@ -151,7 +158,7 @@ skynet_handle_grab(uint32_t handle) {
 	return result;
 }
 
-// 根据一个结点内名字.xxxxx找到相应的handle
+// 根据一个结点内名字xxxxx找到相应的handle
 uint32_t 
 skynet_handle_findname(const char * name) {
 	struct handle_storage *s = H;
@@ -232,6 +239,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	return result;
 }
 
+/* 注册一个本地(节点内)服务名，调用到这里name已经去掉了最前面的'.'，见command REG */
 const char * 
 skynet_handle_namehandle(uint32_t handle, const char *name) {
 	rwlock_wlock(&H->lock);

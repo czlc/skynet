@@ -37,7 +37,8 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 		lua_pushcfunction(L, traceback);			// push traceback, trace
 		lua_rawgetp(L, LUA_REGISTRYINDEX, _cb);		// push dispatch_message
 	} else {
-		assert(top == 2);                           // 每次执行完并不清除栈顶的的traceback 和 dispatch_message，因此后面每次调用都是top == 2
+		// 每次执行完并不清除栈顶的的traceback 和 dispatch_message，因此后面每次调用都是top == 2
+		assert(top == 2);
 	}
 	lua_pushvalue(L,2);								// push dispatch_message
 
@@ -83,10 +84,10 @@ forward_cb(struct skynet_context * context, void * ud, int type, int session, ui
 static int
 _callback(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
-	int forward = lua_toboolean(L, 2);
-	luaL_checktype(L,1,LUA_TFUNCTION);
+	int forward = lua_toboolean(L, 2);	// 是否是转发
+	luaL_checktype(L,1,LUA_TFUNCTION);	// dispatch_message
 	lua_settop(L,1);
-	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);	// Registry[LUA_REGISTRYINDEX][_cb] = dispatch_message，每个snlua服务都以_cb作为callback的索引
+	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);	// Registry[LUA_REGISTRYINDEX][_cb] = dispatch_message
 
 	// 别的协程也可能调用callback比如coroutine.wrap(function() skynet.start(function() ... end) end ) ()
 	lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
@@ -305,6 +306,7 @@ _harbor(lua_State *L) {
 	return 2;
 }
 
+/* 将栈上的参数打包成一个字符串 */
 static int
 lpackstring(lua_State *L) {
 	_luaseri_pack(L);

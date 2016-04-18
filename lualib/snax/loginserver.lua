@@ -54,20 +54,20 @@ local function launch_slave(auth_handler)
 		-- If the attacker send large package, close the socket
 		socket.limit(fd, 8192)
 		-- Protocol:1. Server->Client : base64(8bytes random challenge)
-		local challenge = crypt.randomkey()
+		local challenge = crypt.randomkey()	-- challenge 是双方共有的一个字符串，用来校验secret 是否一致
 		write("auth", fd, crypt.base64encode(challenge).."\n")
 
 		local handshake = assert_socket("auth", socket.readline(fd), fd)
-		local clientkey = crypt.base64decode(handshake)
+		local clientkey = crypt.base64decode(handshake)	-- 客户端公钥
 		if #clientkey ~= 8 then
 			error "Invalid client key"
 		end
 		-- Protocol:3. Server: Gen a 8bytes handshake server key
-		local serverkey = crypt.randomkey()
+		local serverkey = crypt.randomkey()	-- 服务端私钥
 		-- Protocol:4. Server->Client : base64(DH-Exchange(server key))
-		write("auth", fd, crypt.base64encode(crypt.dhexchange(serverkey)).."\n")
+		write("auth", fd, crypt.base64encode(crypt.dhexchange(serverkey)).."\n")	-- 生成一个服务端公钥发送
 		-- Protocol:5. Server/Client secret := DH-Secret(client key/server key)
-		local secret = crypt.dhsecret(clientkey, serverkey)
+		local secret = crypt.dhsecret(clientkey, serverkey)  -- 对方公钥(clientkey)和自己私钥(serverkey)合成一个secret
 
 		local response = assert_socket("auth", socket.readline(fd), fd)
 		local hmac = crypt.hmac64(challenge, secret)
@@ -118,7 +118,7 @@ end
 
 local user_login = {}
 
--- s为slave 服务的id
+-- s为slave 服务的handle, fd
 local function accept(conf, s, fd, addr)
 	-- call slave auth
 	local ok, server, uid, secret = skynet.call(s, "lua",  fd, addr)
@@ -148,7 +148,7 @@ local function accept(conf, s, fd, addr)
 	-- Protocol:10. Server->Client : 200 base64(subid)
 	if ok then
 		err = err or ""
-		write("response 200",fd,  "200 "..crypt.base64encode(err).."\n")   -- login step 8: L 将子 id 发送给 C 。子 id 多用于多重登陆（允许同一个账号同时登陆多次），一个 userid 和一个 subid 一起才是一次登陆的 username 。而每个 username 都对应有唯一的 secret 。
+		write("response 200",fd,  "200 "..crypt.base64encode(err).."\n")   -- login step 8: L 将sub id 发送给 C 。子 id 多用于多重登陆（允许同一个账号同时登陆多次），一个 userid 和一个 subid 一起才是一次登陆的 username 。而每个 username 都对应有唯一的 secret 。
 	else
 		write("response 403",fd,  "403 Forbidden\n")
 		error(err)
@@ -169,11 +169,11 @@ local function launch_master(conf)
 	end)
 
 	for i=1,instance do
-		table.insert(slave, skynet.newservice(SERVICE_NAME)) -- 启动几个slave服务用于负载均衡,SERVICE_NAME在loader.lua中设置
+		table.insert(slave, skynet.newservice(SERVICE_NAME)) -- 启动几个logind服务作为slave用于负载均衡,SERVICE_NAME在loader.lua中设置
 	end
 
 	skynet.error(string.format("login server listen at : %s %d", host, port))
-	local id = socket.listen(host, port)
+	local id = socket.listen(host, port)	-- listen socket
 	socket.start(id , function(fd, addr)
 		local s = slave[balance]
 		balance = balance + 1
@@ -195,16 +195,18 @@ local function login(conf)
 	skynet.start(function()
 		local loginmaster = skynet.localname(name)
 		if loginmaster then
+			-- 如果master已经启动了，则启动slave
 			local auth_handler = assert(conf.auth_handler)
 			launch_master = nil
 			conf = nil
 			launch_slave(auth_handler)
 		else
+			-- 还没有启动master，那先启动master
 			launch_slave = nil
 			conf.auth_handler = nil
 			assert(conf.login_handler)
 			assert(conf.command_handler)
-			skynet.register(name)
+			skynet.register(name)	-- 之后启动的就是slave了
 			launch_master(conf)
 		end
 	end)

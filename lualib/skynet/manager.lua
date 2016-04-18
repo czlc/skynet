@@ -23,6 +23,7 @@ function skynet.abort()
 	c.command("ABORT")
 end
 
+-- 注册一个全局名字
 local function globalname(name, handle)
 	local c = string.sub(name,1,1)
 	assert(c ~= ':')
@@ -62,11 +63,12 @@ function skynet.forward_type(map, start_func)
 		local prototype = map[ptype]
 		if prototype then
 			dispatch_message(prototype, msg, sz, ...)
+			-- 需要转发，见clusterproxy最下面skynet.pack("req", node, address, msg, sz)，所以就不需要删除
 		else
 			dispatch_message(ptype, msg, sz, ...)
 			c.trash(msg, sz)
 		end
-	end, true)
+	end, true)	-- true 表示forward
 	skynet.timeout(0, function()
 		skynet.init_service(start_func)
 	end)

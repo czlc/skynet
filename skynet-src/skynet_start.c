@@ -18,12 +18,12 @@
 #include <string.h>
 
 struct monitor {
-	int count;						// skynet_monitor count，每个worker一个
-	struct skynet_monitor ** m;
-	pthread_cond_t cond;
-	pthread_mutex_t mutex;
-	int sleep;
-	int quit;
+	int count;						// 监控器数量，每个worker一个
+	struct skynet_monitor ** m;		// 线程监控器数组
+	pthread_cond_t cond;			// 条件变量
+	pthread_mutex_t mutex;			// 互斥体对象
+	int sleep;						// 休息线程个数
+	int quit;						// 是否处于退出流程
 };
 
 struct worker_parm {
@@ -43,6 +43,7 @@ create_thread(pthread_t *thread, void *(*start_routine) (void *), void *arg) {
 }
 
 // work线程<=busy的时候唤醒一个
+// 唤醒看成是一个预热过程
 static void
 wakeup(struct monitor *m, int busy) {
 	if (m->sleep >= m->count - busy) {
@@ -63,7 +64,7 @@ thread_socket(void *p) {
 			CHECK_ABORT
 			continue;
 		}
-		wakeup(m,0);
+		wakeup(m,0);	// 网络 IO 消息在 skynet 的设计里是 2 等公民. 而且一个网络消息通常只需要一个 worker 去处理就够了
 	}
 	return NULL;
 }
@@ -90,8 +91,9 @@ thread_monitor(void *p) {
 	for (;;) {
 		CHECK_ABORT
 		for (i=0;i<n;i++) {
-			skynet_monitor_check(m->m[i]);
+			skynet_monitor_check(m->m[i]);	// 检查一下所有work是否消息处理处于死循环
 		}
+		// 休息5秒钟
 		for (i=0;i<5;i++) {
 			CHECK_ABORT
 			sleep(1);
@@ -108,8 +110,8 @@ thread_timer(void *p) {
 	for (;;) {
 		skynet_updatetime();
 		CHECK_ABORT
-		wakeup(m,m->count-1);
-		usleep(2500);
+		wakeup(m,m->count-1);	// 要求m_count-1个busy，timer 消息是 first class 的,一次是一串. timer update 线程也起到定期把进程加热的功能
+		usleep(2500);			// 2.5ms
 	}
 	// wakeup socket thread
 	skynet_socket_exit();
@@ -133,12 +135,13 @@ thread_worker(void *p) {
 	while (!m->quit) {
 		q = skynet_context_message_dispatch(sm, q, weight);
 		if (q == NULL) {
+			// 如果暂时没有需要处理的消息，那么就先休息一下
 			if (pthread_mutex_lock(&m->mutex) == 0) {
 				++ m->sleep;
 				// "spurious wakeup" is harmless,
 				// because skynet_context_message_dispatch() can be call at any time.
 				if (!m->quit)
-					pthread_cond_wait(&m->cond, &m->mutex);
+					pthread_cond_wait(&m->cond, &m->mutex);	// 会unlock上面的lock
 				-- m->sleep;
 				if (pthread_mutex_unlock(&m->mutex)) {
 					fprintf(stderr, "unlock mutex error");
@@ -230,12 +233,14 @@ skynet_start(struct skynet_config * config) {
 	skynet_timer_init();
 	skynet_socket_init();
 
+	// logservice 服务
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
 		exit(1);
 	}
 
+	// boot 服务
 	bootstrap(ctx, config->bootstrap);
 
 	start(config->thread);

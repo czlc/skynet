@@ -82,6 +82,7 @@ function server.request_handler(username, msg)
 end
 
 -- call by self (when gate open)
+-- 注册自己给loginservice，这样loginservice可以告知用户将要登录自己
 function server.register_handler(name)
 	servername = name
 	skynet.call(loginservice, "lua", "register_gate", servername, skynet.self())

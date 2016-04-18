@@ -102,7 +102,7 @@ skynet_module_query(const char * name) {
 
 	if (result == NULL && M->count < MAX_MODULE_TYPE) {
 		int index = M->count;
-		void * dl = _try_open(M,name);
+		void * dl = _try_open(M,name);	// ясЁы╪сть
 		if (dl) {
 			M->m[index].name = name;
 			M->m[index].module = dl;

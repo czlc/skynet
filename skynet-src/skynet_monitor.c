@@ -10,7 +10,7 @@
 
 struct skynet_monitor {
 	int version;
-	int check_version;
+	int check_version;	// 每处理一个消息会修改版本号，每5秒钟会检查版本号是否改变，如果没变表示进入了死循环
 	uint32_t source;
 	uint32_t destination;
 };

@@ -5,10 +5,10 @@
 #include <stdint.h>
 
 struct skynet_message {
-	uint32_t source;
-	int session;
-	void * data;
-	size_t sz;	// 高8位为type
+	uint32_t source;	// 发送者id
+	int session;		// 会话id
+	void * data;		// 数据内容
+	size_t sz;			// 高8位为type
 };
 
 // type is encoding in skynet_message.sz high 8bit
@@ -20,6 +20,7 @@ struct message_queue;
 void skynet_globalmq_push(struct message_queue * queue);
 struct message_queue * skynet_globalmq_pop(void);
 
+/* 为一个服务创建消息队列 */
 struct message_queue * skynet_mq_create(uint32_t handle);
 void skynet_mq_mark_release(struct message_queue *q);
 

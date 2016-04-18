@@ -17,7 +17,7 @@
  */
 
 #define TEMP_LENGTH 0x8200
-#define MULTI_PART 0x8000
+#define MULTI_PART 0x8000	// 32k，之所以分块是为了不让TEMP_LENGTH太大？
 
 static void
 fill_uint32(uint8_t * buf, uint32_t n) {

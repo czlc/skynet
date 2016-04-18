@@ -26,8 +26,12 @@ void socket_server_release(struct socket_server *);
 int socket_server_poll(struct socket_server *, struct socket_message *result, int *more);
 
 void socket_server_exit(struct socket_server *);
+/* 将缓冲区的东西都发送完毕才执行关闭 */
 void socket_server_close(struct socket_server *, uintptr_t opaque, int id);
+/* 无论缓冲区是否有东西都直接关闭 */
 void socket_server_shutdown(struct socket_server *, uintptr_t opaque, int id);
+
+/* opaque 是发起start的服务handle */
 void socket_server_start(struct socket_server *, uintptr_t opaque, int id);
 
 // return -1 when error
@@ -36,7 +40,11 @@ void socket_server_send_lowpriority(struct socket_server *, int id, const void *
 
 // ctrl command below returns id
 int socket_server_listen(struct socket_server *, uintptr_t opaque, const char * addr, int port, int backlog);
+
+/* 连接addr:port ，opaque是发起连接的service的handle*/
 int socket_server_connect(struct socket_server *, uintptr_t opaque, const char * addr, int port);
+
+/* */
 int socket_server_bind(struct socket_server *, uintptr_t opaque, int fd);
 
 // for tcp
@@ -55,10 +63,11 @@ int64_t socket_server_udp_send(struct socket_server *, int id, const struct sock
 // extract the address of the message, struct socket_message * should be SOCKET_UDP
 const struct socket_udp_address * socket_server_udp_address(struct socket_server *, struct socket_message *, int *addrsz);
 
+// https://groups.google.com/forum/#!topic/skynet-users/Xzgy6d4H0HQ
 struct socket_object_interface {
 	void * (*buffer)(void *);	// 获得buffer数据
 	int (*size)(void *);		// 获得buffer大小
-	void (*free)(void *);		// 释放buffer
+	void (*free)(void *);		// 释放buffer，可定制的好处是可以用个引用计数，这样广播的时候就没必要复制数据了
 };
 
 // if you send package sz == -1, use soi.

@@ -60,6 +60,7 @@ static lua_Integer lua_tointegerx(lua_State *L, int idx, int *isnum) {
 
 #endif
 
+/* 读入解析出来的bin，生成程序定义的结构，并将其以lightuserdata的形式压入 */
 static int
 lnewproto(lua_State *L) {
 	struct sproto * sp;
@@ -100,17 +101,38 @@ lquerytype(lua_State *L) {
 	return 0;
 }
 
+// 每一个struct都有一个新的ud
 struct encode_ud {
 	lua_State *L;
-	struct sproto_type *st;
-	int tbl_index;
-	const char * array_tag;
-	int array_index;
-	int deep;
+	struct sproto_type *st;		// table所批评的type
+	int tbl_index;				// 待解析的table所在的索引
+	const char * array_tag;		// 当前正解析中的array的tag，通过匹配tag可以知道array_index是否有效
+	int array_index;			// 当前正解析中的array的lua index
+	int deep;					// 结构的嵌套深度
 	int iter_index;
 };
 
-static int
+/*
+	作用：
+		根据encode_ud，tagname, index从脚本中取一个值，并将其编码进value
+		encode_ud->tbl_index指向当前SPROTO_TSTRUCT的table
+		先取得相应field对应的值table[tagname]
+		根据index判断是否是一个数组
+			index > 0表示为数组索引，目标值为table[tagname][index]
+			index = 0则目标值就是table[tagname]
+	参数：
+		ud:
+		tagname		:待编码的元素field
+		type		:待编码元素类型
+		index		:数组元素 > 0，非数组元素 = 0
+		st			:如果type为SPROTO_TSTRUCT，st对应相关类型
+		value		:编码后的值将存入此缓存
+		length		:缓存可用空间
+
+	返回：
+		编码后内容占用空间
+*/
+static int 
 encode(const struct sproto_arg *args) {
 	struct encode_ud *self = args->ud;
 	lua_State *L = self->L;
@@ -118,11 +140,14 @@ encode(const struct sproto_arg *args) {
 		return luaL_error(L, "The table is too deep");
 	if (args->index > 0) {
 		if (args->tagname != self->array_tag) {
+			// 如果不是当前数组，说明self->array_index需要更新
 			// a new array
 			self->array_tag = args->tagname;
 			lua_getfield(L, self->tbl_index, args->tagname);
 			if (lua_isnil(L, -1)) {
+				// 如果没有填这个数组
 				if (self->array_index) {
+					// 设置数组索引所指向的为nil
 					lua_replace(L, self->array_index);
 				}
 				self->array_index = 0;
@@ -133,6 +158,7 @@ encode(const struct sproto_arg *args) {
 					args->tagname, args->index, lua_typename(L, lua_type(L, -1)));
 			}
 			if (self->array_index) {
+				// 此结构有多个的数组，处理新数组，将救数组替换
 				lua_replace(L, self->array_index);
 			} else {
 				self->array_index = lua_gettop(L);
@@ -155,9 +181,11 @@ encode(const struct sproto_arg *args) {
 			lua_geti(L, self->array_index, args->index);
 		}
 	} else {
+		// 非数组数据
 		lua_getfield(L, self->tbl_index, args->tagname);
 	}
 	if (lua_isnil(L, -1)) {
+		// 如果table中没有找到填相关数据
 		lua_pop(L,1);
 		return 0;
 	}
@@ -255,8 +283,19 @@ expand_buffer(lua_State *L, int osz, int nsz) {
 	lightuserdata sproto_type
 	table source
 
-	return string
+	return string 
  */
+/*
+	功能：
+		对一段脚本数据(table)，按指定类型格式编码
+
+	参数：
+		stackpos(1)		:目标类型
+		stackpos(2)		:脚本数据
+
+	返回：
+		编码过后的buff作为二进制字符串传入脚本
+*/
 static int
 lencode(lua_State *L) {
 	struct encode_ud self;
@@ -303,7 +342,27 @@ struct decode_ud {
 	int key_index;
 };
 
-static int
+/*
+	作用：
+		根据encode_ud，tagname, index从脚本中取一个值，并将其编码进value
+		encode_ud->tbl_index指向当前SPROTO_TSTRUCT的table
+		先取得相应field对应的值table[tagname]
+		根据index判断是否是一个数组
+			index > 0表示为数组索引，目标值为table[tagname][index]
+			index = 0则目标值就是table[tagname]
+	参数：
+		ud:
+		tagname		:待编码的元素field
+		type		:待编码元素类型
+		index		:数组元素 > 0，非数组元素 = 0
+		st			:如果type为SPROTO_TSTRUCT，st对应相关类型
+		value		:剩余待解码缓存
+		length		:剩余待解码缓存大小
+
+	返回：
+		编码后内容占用空间
+*/
+static int 
 decode(const struct sproto_arg *args) {
 	struct decode_ud * self = args->ud;
 	lua_State *L = self->L;
@@ -416,6 +475,18 @@ getbuffer(lua_State *L, int index, size_t *sz) {
 	string source	/  (lightuserdata , integer)
 	return table
  */
+/*
+	功能：
+		按指定格式，解码一段二进制字符串，生成编码前的table
+		
+	参数：
+		stackpos(1)		:目标类型
+		stackpos(2)		:二进制字符串
+
+	返回：
+		原始table
+		size？
+*/
 static int
 ldecode(lua_State *L) {
 	struct sproto_type * st = lua_touserdata(L, 1);
@@ -439,7 +510,7 @@ ldecode(lua_State *L) {
 	self.deep = 0;
 	self.mainindex_tag = -1;
 	self.key_index = 0;
-	r = sproto_decode(st, buffer, (int)sz, decode, &self);
+	r = sproto_decode(st, buffer, (int)sz, decode, &self);	// 
 	if (r < 0) {
 		return luaL_error(L, "decode error");
 	}
@@ -464,10 +535,19 @@ ldumpproto(lua_State *L) {
 	string source	/  (lightuserdata , integer)
 	return string
  */
+/*
+	功能：
+		使得数据包更加紧凑
+		
+	参数：
+
+	返回：
+
+*/
 static int
 lpack(lua_State *L) {
 	size_t sz=0;
-	const void * buffer = getbuffer(L, 1, &sz);
+	const void * buffer = getbuffer(L, 1, &sz);		// 被打包的目标数据
 	// the worst-case space overhead of packing is 2 bytes per 2 KiB of input (256 words = 2KiB).
 	size_t maxsz = (sz + 2047) / 2048 * 2 + sz + 2;
 	void * output = lua_touserdata(L, lua_upvalueindex(1));
@@ -524,6 +604,7 @@ lprotocol(lua_State *L) {
 	}
 	t = lua_type(L,2);
 	if (t == LUA_TNUMBER) {
+		// 根据tag查找
 		const char * name;
 		tag = lua_tointeger(L, 2);
 		name = sproto_protoname(sp, tag);
@@ -531,18 +612,21 @@ lprotocol(lua_State *L) {
 			return 0;
 		lua_pushstring(L, name);
 	} else {
+		// 根据name查找
 		const char * name = lua_tostring(L, 2);
 		tag = sproto_prototag(sp, name);
 		if (tag < 0)
 			return 0;
 		lua_pushinteger(L, tag);
 	}
+	// 查找请求
 	request = sproto_protoquery(sp, tag, SPROTO_REQUEST);
 	if (request == NULL) {
 		lua_pushnil(L);
 	} else {
 		lua_pushlightuserdata(L, request);
 	}
+	// 查找应答
 	response = sproto_protoquery(sp, tag, SPROTO_RESPONSE);
 	if (response == NULL) {
 		lua_pushnil(L);

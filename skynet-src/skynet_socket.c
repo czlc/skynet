@@ -29,7 +29,9 @@ skynet_socket_free() {
 	SOCKET_SERVER = NULL;
 }
 
-// mainloop thread, 把处理结果转发给请求者的服务，padding是把字符串data加到结构体末尾,data是接收到的数据
+// mainloop thread, 把处理结果转发给请求者的服务
+// padding为true表示result->data是一个短字符串，通常表示错误信息，text形式的ip地址
+// padding为true通常把字符串data加到结构体末尾,并清空data以区分提示字符串和接收的数据
 static void
 forward_message(int type, bool padding, struct socket_message * result) {
 	struct skynet_socket_message *sm;
@@ -193,6 +195,7 @@ skynet_socket_udp_send(struct skynet_context *ctx, int id, const char * address,
 	return check_wsz(ctx, id, (void *)buffer, wsz);
 }
 
+/* 返回addr string, addrsz是其大小 */
 const char *
 skynet_socket_udp_address(struct skynet_socket_message *msg, int *addrsz) {
 	if (msg->type != SKYNET_SOCKET_TYPE_UDP) {

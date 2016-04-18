@@ -7,6 +7,7 @@
 #define GLOBALNAME_LENGTH 16
 #define REMOTE_MAX 256
 
+// 可以根据2者之一发送
 struct remote_name {
 	char name[GLOBALNAME_LENGTH];
 	uint32_t handle;

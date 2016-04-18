@@ -56,15 +56,15 @@ local readline = unpack_f(unpack_line)
 
 local challenge = crypt.base64decode(readline())
 
-local clientkey = crypt.randomkey()
+local clientkey = crypt.randomkey()	-- 生成私钥
 -- Protocol:2. Client->Server : base64(8bytes handshake client key)
-writeline(fd, crypt.base64encode(crypt.dhexchange(clientkey))) -- 即使截获这个值，也反推不出clientkey(计算对数相当困难)，从而也无法计算secret
+writeline(fd, crypt.base64encode(crypt.dhexchange(clientkey))) -- 生成一个公钥
 -- Protocol:5. Server/Client secret := DH-Secret(client key/server key)
-local secret = crypt.dhsecret(crypt.base64decode(readline()), clientkey)
+local secret = crypt.dhsecret(crypt.base64decode(readline()), clientkey)	-- 对方公钥(readline())和自己私钥(clientkey)合成一个secret
 
 print("sceret is ", crypt.hexencode(secret))
 
--- Protocol:6. Client->Server : base64(HMAC(challenge, secret))
+-- Protocol:6. Client->Server : base64(HMAC(challenge, secret)) 验证secret 双方是否一致
 local hmac = crypt.hmac64(challenge, secret)
 writeline(fd, crypt.base64encode(hmac)) -- login step 3:C 和 L 交换后续通讯用的密钥 secret ，并立刻验证。
 
@@ -159,6 +159,7 @@ print("connect again")
 fd = assert(socket.connect("127.0.0.1", 8888))
 last = ""
 
+-- 不再需要之前的登录流程
 local handshake = string.format("%s@%s#%s:%d", crypt.base64encode(token.user), crypt.base64encode(token.server),crypt.base64encode(subid) , index)
 local hmac = crypt.hmac64(crypt.hashkey(handshake), secret)
 

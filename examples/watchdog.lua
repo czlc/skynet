@@ -5,7 +5,7 @@ local netpack = require "netpack"
 local CMD = {}
 local SOCKET = {}
 local gate
-local agent = {}
+local agent = {}	-- [fd] = agent
 
 -- gate accept了客户端连接，由watchdog创建agent，同于一对一的通信
 function SOCKET.open(fd, addr)

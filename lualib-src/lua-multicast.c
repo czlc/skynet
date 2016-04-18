@@ -21,6 +21,9 @@ pack(lua_State *L, void *data, size_t size) {
 	pack->data = data;
 	struct mc_package ** ret = skynet_malloc(sizeof(*ret));
 	*ret = pack;
+	// 之所以不是直接push mc_package * pack是因为它们的职责不同
+	// mc_package是用于发布到各个监听者的，具有引用计数，计数到0的时候才会释放
+	// 而对于mc_package**来说，只是用于普通服务间传递，目前是multicastd.lua会负责自动释放
 	lua_pushlightuserdata(L, ret);
 	lua_pushinteger(L, sizeof(ret));
 	return 2;
@@ -147,7 +150,7 @@ mc_remote(lua_State *L) {
 static int
 mc_nextid(lua_State *L) {
 	uint32_t id = (uint32_t)luaL_checkinteger(L, 1);
-	id += 256; // 第8位保持不变，为harbor id
+	id += 256; // 低8位保持不变，为harbor id
 	lua_pushinteger(L, (uint32_t)id);
 
 	return 1;

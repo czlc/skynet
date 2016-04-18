@@ -59,6 +59,7 @@
 #define AGAIN_WOULDBLOCK EAGAIN
 #endif
 
+// 发送数据包
 struct write_buffer {
 	struct write_buffer * next;
 	void *buffer;					// 发送缓冲首地址,send完之后删除
@@ -78,17 +79,17 @@ struct wb_list {
 };
 
 struct socket {
-	uintptr_t opaque;	// context handle
+	uintptr_t opaque;	// context handle，start_socket中可能改变，重定向收发服务
 	struct wb_list high;// 高优先级发送队列
 	struct wb_list low;	// 低优先级发送队列
 	int64_t wb_size;	// 将要写入(发送)的字节数
-	int fd;				// 套接字描述符
+	int fd;				// io文件描述符，可以是套接字描述符，也可以是stdin
 	int id;				// socket id
 	uint16_t protocol;
 	uint16_t type;			// SOCKET状态
 	union {
 		int size;			// 接收缓冲大小，在收消息的时候会调整
-		uint8_t udp_address[UDP_ADDRESS_SIZE];
+		uint8_t udp_address[UDP_ADDRESS_SIZE];	// 默认目地地址
 	} p;
 };
 
@@ -110,16 +111,16 @@ struct socket_server {
 
 // 多数请求都带有opaque，它是发出请求的ctx的handle，因为所有的socket命令在一个单独的线程处理，处理完后需要通知相应的ctx
 struct request_open {
-	int id;
+	int id;		// socket id
 	int port;
-	uintptr_t opaque;
+	uintptr_t opaque;	// source handle
 	char host[1];
 };
 
 struct request_send {
 	int id;
 	int sz;		// -1 表示使用soi
-	char * buffer;
+	char * buffer;	// 发送的内容，发送完毕删除
 };
 
 struct request_send_udp {
@@ -210,6 +211,7 @@ union sockaddr_all {
 	struct sockaddr_in6 v6;
 };
 
+/* 之所以要send obj是因为想自定义处理发送缓冲 https://groups.google.com/forum/#!topic/skynet-users/Xzgy6d4H0HQ */
 struct send_object {
 	void * buffer;
 	int sz;
@@ -250,7 +252,8 @@ socket_keepalive(int fd) {
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));  
 }
 
-// 分配一个可用的socket id
+// 被各个服务访问，要求线程安全
+// 从连接池分配一个可用的socket id
 static int
 reserve_id(struct socket_server *ss) {
 	int i;
@@ -289,11 +292,13 @@ socket_server_create() {
 		fprintf(stderr, "socket-server: create event pool failed.\n");
 		return NULL;
 	}
+	// 创建管道用于接收命令
 	if (pipe(fd)) {
 		sp_release(efd);
 		fprintf(stderr, "socket-server: create socket pair failed.\n");
 		return NULL;
 	}
+	// 命令接收端加入poll监控
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
 		fprintf(stderr, "socket-server: can't add server fd to event pool.\n");
@@ -350,10 +355,11 @@ force_close(struct socket_server *ss, struct socket *s, struct socket_message *r
 	free_wb_list(ss,&s->high);
 	free_wb_list(ss,&s->low);
 	if (s->type != SOCKET_TYPE_PACCEPT && s->type != SOCKET_TYPE_PLISTEN) {
-		// NOTE:liuchang 为何这2种排除在外
-		sp_del(ss->event_fd, s->fd);
+		// 这2种情况实际上还没有添加到epoll中去，所以不用删除
+		sp_del(ss->event_fd, s->fd); // 实际上有点多余，在linux下因为close会使得他们自动从epoll中删除
 	}
 	if (s->type != SOCKET_TYPE_BIND) {
+		// bind 通常是对本地io的绑定
 		if (close(s->fd) < 0) {
 			perror("close socket:");
 		}
@@ -383,7 +389,7 @@ check_wb_list(struct wb_list *s) {
 	assert(s->tail == NULL);
 }
 
-// 初始化之前占位的socket初始化
+// 初始化之前占位的socket
 static struct socket *
 new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque, bool add) {
 	struct socket * s = &ss->slot[HASH_ID(id)];
@@ -400,7 +406,7 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 	s->fd = fd;
 	s->protocol = protocol;
 	s->p.size = MIN_READ_BUFFER;
-	s->opaque = opaque;
+	s->opaque = opaque;	// 收消息的ctx handle
 	s->wb_size = 0;
 	check_wb_list(&s->high);
 	check_wb_list(&s->low);
@@ -640,7 +646,7 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_message *r
 		} else {
 			// step 4
 			sp_write(ss->event_fd, s->fd, s, false);
-
+			// 发送完毕可以正式关闭socket了
 			if (s->type == SOCKET_TYPE_HALFCLOSE) {
 				force_close(ss, s, result);
 				return SOCKET_CLOSE;
@@ -675,7 +681,7 @@ append_sendbuffer_(struct socket_server *ss, struct wb_list *s, struct request_s
 static inline void
 append_sendbuffer_udp(struct socket_server *ss, struct socket *s, int priority, struct request_send * request, const uint8_t udp_address[UDP_ADDRESS_SIZE]) {
 	struct wb_list *wl = (priority == PRIORITY_HIGH) ? &s->high : &s->low;
-	struct write_buffer *buf = append_sendbuffer_(ss, wl, request, SIZEOF_UDPBUFFER, 0);
+	struct write_buffer *buf = append_sendbuffer_(ss, wl, request, SIZEOF_UDPBUFFER, 0);	// 全部重新发送
 	memcpy(buf->udp_address, udp_address, UDP_ADDRESS_SIZE);
 	s->wb_size += buf->sz;
 }
@@ -704,6 +710,8 @@ send_buffer_empty(struct socket *s) {
 	If socket buffer is empty, write to fd directly.
 		If write a part, append the rest part to high list. (Even priority is PRIORITY_LOW)
 	Else append package to high (PRIORITY_HIGH) or low (PRIORITY_LOW) list.
+
+	发送的入口
  */
 static int
 send_socket(struct socket_server *ss, struct request_send * request, struct socket_message *result, int priority, const uint8_t *udp_address) {
@@ -754,7 +762,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 			socklen_t sasz = udp_socket_address(s, udp_address, &sa);
 			int n = sendto(s->fd, so.buffer, so.sz, 0, &sa.s, sasz);
 			if (n != so.sz) {
-				append_sendbuffer_udp(ss,s,priority,request,udp_address);
+				append_sendbuffer_udp(ss,s,priority,request,udp_address);	// 下次全部重新发送？
 			} else {
 				so.free_func(request->buffer);
 				return -1;
@@ -815,6 +823,7 @@ close_socket(struct socket_server *ss, struct request_close *request, struct soc
 		if (type != -1)
 			return type;
 	}
+	// shutdown 不管缓冲中是否还有东西要发送都直接关闭
 	if (request->shutdown || send_buffer_empty(s)) {
 		force_close(ss,s,result);
 		result->id = id;
@@ -936,7 +945,7 @@ add_udp_socket(struct socket_server *ss, struct request_udp *udp) {
 		return;
 	}
 	ns->type = SOCKET_TYPE_CONNECTED;
-	memset(ns->p.udp_address, 0, sizeof(ns->p.udp_address));
+	memset(ns->p.udp_address, 0, sizeof(ns->p.udp_address));	// 默认目标地址为null
 }
 
 static int
@@ -1112,7 +1121,7 @@ forward_message_udp(struct socket_server *ss, struct socket *s, struct socket_me
 		data = MALLOC(n + 1 + 2 + 16);
 		gen_udp_address(PROTOCOL_UDPv6, &sa, data + n);
 	}
-	memcpy(data, ss->udpbuffer, n);
+	memcpy(data, ss->udpbuffer, n);	// msg + addr
 
 	result->opaque = s->opaque;
 	result->id = s->id;
@@ -1285,7 +1294,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 					}
 				}
 				if (e->write && type != SOCKET_CLOSE && type != SOCKET_ERROR) {
-					// Try to dispatch write message next step if write flag set.
+					// Try to dispatch write message next step if write flag set.(因为可能同时有读写事件)
 					e->read = false;
 					--ss->event_index;
 				}
@@ -1340,6 +1349,7 @@ open_request(struct socket_server *ss, struct request_package *req, uintptr_t op
 	return len;
 }
 
+/* opaque 是发起连接的service handle */
 int 
 socket_server_connect(struct socket_server *ss, uintptr_t opaque, const char * addr, int port) {
 	struct request_package request;
@@ -1541,7 +1551,7 @@ socket_server_udp(struct socket_server *ss, uintptr_t opaque, const char * addr,
 	int family;
 	if (port != 0 || addr != NULL) {
 		// bind
-		fd = do_bind(addr, port, IPPROTO_UDP, &family);
+		fd = do_bind(addr, port, IPPROTO_UDP, &family);	// bind地址主要是用于收，发送的话会随机选择端口
 		if (fd < 0) {
 			return -1;
 		}
@@ -1640,6 +1650,7 @@ socket_server_udp_connect(struct socket_server *ss, int id, const char * addr, i
 	return 0;
 }
 
+/* udp 消息是msg = data + addr 将其拆分出来, 返回addr字符串，addrsz填充好 */
 const struct socket_udp_address *
 socket_server_udp_address(struct socket_server *ss, struct socket_message *msg, int *addrsz) {
 	uint8_t * address = (uint8_t *)(msg->data + msg->ud);

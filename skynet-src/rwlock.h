@@ -18,10 +18,13 @@ static inline void
 rwlock_rlock(struct rwlock *lock) {
 	for (;;) {
 		while(lock->write) {
+			// 等待写结束
 			__sync_synchronize();
 		}
+		// 标记读
 		__sync_add_and_fetch(&lock->read,1);
 		if (lock->write) {
+			// 如果有写瞬间插进来则取消读，重新试探
 			__sync_sub_and_fetch(&lock->read,1);
 		} else {
 			break;
@@ -33,6 +36,7 @@ static inline void
 rwlock_wlock(struct rwlock *lock) {
 	while (__sync_lock_test_and_set(&lock->write,1)) {}
 	while(lock->read) {
+		// 等待读结束
 		__sync_synchronize();
 	}
 }

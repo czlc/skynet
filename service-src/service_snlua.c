@@ -67,6 +67,7 @@ optstring(struct skynet_context *ctx, const char *key, const char * str) {
 	return ret;
 }
 
+/* 真正的初始化工作 */
 static int
 _init(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz) {
 	lua_State *L = l->L;
@@ -76,36 +77,39 @@ _init(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz)
 	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");	//  ignores environment variables：ignoring LUA_INIT,also ignores the values of LUA_PATH and LUA_CPATH
 	luaL_openlibs(L);
 	lua_pushlightuserdata(L, ctx);
-	lua_setfield(L, LUA_REGISTRYINDEX, "skynet_context");
+	lua_setfield(L, LUA_REGISTRYINDEX, "skynet_context");	// ctx 设置到全局注册表
 	luaL_requiref(L, "skynet.codecache", codecache , 0);
 	lua_pop(L,1);	// pop require
 
 	const char *path = optstring(ctx, "lua_path","./lualib/?.lua;./lualib/?/init.lua");
 	lua_pushstring(L, path);
-	lua_setglobal(L, "LUA_PATH");
+	lua_setglobal(L, "LUA_PATH");		// 基础库目录(.lua)
 	const char *cpath = optstring(ctx, "lua_cpath","./luaclib/?.so");
 	lua_pushstring(L, cpath);
-	lua_setglobal(L, "LUA_CPATH");
+	lua_setglobal(L, "LUA_CPATH");		// 基础库目录(.so)
 	const char *service = optstring(ctx, "luaservice", "./service/?.lua");
 	lua_pushstring(L, service);
-	lua_setglobal(L, "LUA_SERVICE");
+	lua_setglobal(L, "LUA_SERVICE");	// 服务目录(.lua)
 	const char *preload = skynet_command(ctx, "GETENV", "preload");
 	lua_pushstring(L, preload);
-	lua_setglobal(L, "LUA_PRELOAD");
+	lua_setglobal(L, "LUA_PRELOAD");	// 预加载脚本
 
 	lua_pushcfunction(L, traceback);
 	assert(lua_gettop(L) == 1);
 
-	const char * loader = optstring(ctx, "lualoader", "./lualib/loader.lua");
+	const char * loader = optstring(ctx, "lualoader", "./lualib/loader.lua");	// 加载器
 
+	// 压入函数
 	int r = luaL_loadfile(L,loader);
 	if (r != LUA_OK) {
 		skynet_error(ctx, "Can't load %s : %s", loader, lua_tostring(L, -1));
 		_report_launcher_error(ctx);
 		return 1;
 	}
+
+	// 压入参数
 	lua_pushlstring(L, args, sz);
-	r = lua_pcall(L,1,0,1);	// 调用loader.lua(L, args, ret, traceback)
+	r = lua_pcall(L,1,0,1);
 	if (r != LUA_OK) {
 		skynet_error(ctx, "lua loader error : %s", lua_tostring(L, -1));
 		_report_launcher_error(ctx);

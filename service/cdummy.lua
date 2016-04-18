@@ -1,3 +1,4 @@
+-- 负责拦截对外广播的全局名字变更
 local skynet = require "skynet"
 require "skynet.manager"	-- import skynet.launch, ...
 

@@ -55,7 +55,7 @@ end
 
 local function getcobj(self)
 	local obj = self.__obj
-	if isdirty(obj) then
+	if isdirty(obj) then	-- 只对根节点有效
 		local newobj, newtbl = needupdate(self.__gcobj)
 		if newobj then
 			local newgcobj = newtbl.__gcobj
@@ -74,6 +74,7 @@ function meta:__index(key)
 	local obj = getcobj(self)
 	local v = index(obj, key)
 	if type(v) == "userdata" then
+		-- table是以lightuserdata的方式压入
 		local children = self.__cache
 		if children == nil then
 			children = {}
@@ -83,6 +84,7 @@ function meta:__index(key)
 		if r then
 			return r
 		end
+		-- 使得可以多层引用
 		r = setmetatable({
 			__obj = v,
 			__gcobj = self.__gcobj,
@@ -112,8 +114,9 @@ function conf.next(obj, key)
 	end
 end
 
+-- obj 是cobj
 function conf.box(obj)
-	local gcobj = core.box(obj)
+	local gcobj = core.box(obj)	-- 获得一个userdata，它里面存有update信息(某个版本的数据?)
 	return setmetatable({
 		__parent = false,
 		__obj = obj,
@@ -122,6 +125,7 @@ function conf.box(obj)
 	} , meta)
 end
 
+-- pointer 是newobj(即cobj)
 function conf.update(self, pointer)
 	local cobj = self.__obj
 	assert(isdirty(cobj), "Only dirty object can be update")

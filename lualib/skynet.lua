@@ -364,12 +364,7 @@ function skynet.exit()
 end
 
 function skynet.getenv(key)
-	local ret = c.command("GETENV",key)
-	if ret == "" then
-		return
-	else
-		return ret
-	end
+	return (c.command("GETENV",key))
 end
 
 function skynet.setenv(key, value)
@@ -686,9 +681,9 @@ function skynet.init(f, name)
 	if init_func == nil then
 		f()
 	else
-		if name == nil then
-			table.insert(init_func, f)
-		else
+		table.insert(init_func, f)
+		if name then
+			assert(type(name) == "string")
 			assert(init_func[name] == nil)
 			init_func[name] = f
 		end
@@ -699,8 +694,8 @@ local function init_all()
 	local funcs = init_func
 	init_func = nil
 	if funcs then
-		for k,v in pairs(funcs) do
-			v()
+		for _,f in ipairs(funcs) do
+			f()
 		end
 	end
 end

@@ -154,16 +154,25 @@ local function register_global()
 end
 
 local function register_local()
-	-- 启动一个全网唯一的服务
-	function cmd.GLAUNCH(name, ...)
+
+	local function waitfor_remote(cmd, name, ...)
 		local global_name = "@" .. name
-		return waitfor(global_name, skynet.call, "SERVICE", "lua", "LAUNCH", global_name, ...)
+		local local_name
+		if name == "snaxd" then
+			local_name = global_name .. "." .. (...)
+		else
+			local_name = global_name
+		end
+		return waitfor(local_name, skynet.call, "SERVICE", "lua", cmd, global_name, ...)
 	end
 
+	-- 启动一个全网唯一的服务
+	function cmd.GLAUNCH(...)
+		return waitfor_remote("LAUNCH", ...)
+	end
 	-- 查询一个全网唯一的服务
-	function cmd.GQUERY(name, ...)
-		local global_name = "@" .. name
-		return waitfor(global_name, skynet.call, "SERVICE", "lua", "QUERY", global_name, ...)
+	function cmd.GQUERY(...)
+		return waitfor_remote("QUERY", ...)
 	end
 
 	function cmd.LIST()

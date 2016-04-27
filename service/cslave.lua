@@ -230,6 +230,7 @@ function harbor.QUERYNAME(fd, name)
 	end
 	local queue = queryname[name]
 	if queue == nil then
+		socket.write(fd, pack_package("Q", name))
 		queue = { skynet.response() }
 		queryname[name] = queue
 	else

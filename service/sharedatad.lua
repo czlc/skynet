@@ -39,7 +39,7 @@ local CMD = {}
 
 local env_mt = { __index = _ENV }
 
-function CMD.new(name, t)
+function CMD.new(name, t, ...)
 	local dt = type(t)
 	local value
 	if dt == "table" then
@@ -55,7 +55,7 @@ function CMD.new(name, t)
 			-- 还可以是一段 lua 文本代码
 			f = assert(load(t, "=" .. name, "bt", value))
 		end
-		local _, ret = assert(skynet.pcall(f))
+		local _, ret = assert(skynet.pcall(f, ...))
 		setmetatable(value, nil)
 		if type(ret) == "table" then
 			value = ret
@@ -96,7 +96,7 @@ function CMD.confirm(cobj)
 	return NORET
 end
 
-function CMD.update(name, t)
+function CMD.update(name, t, ...)
 	local v = pool[name]
 	local watch, oldcobj
 	if v then
@@ -107,7 +107,7 @@ function CMD.update(name, t)
 		pool[name] = nil
 		pool_count[name] = nil
 	end
-	CMD.new(name, t)
+	CMD.new(name, t, ...)
 	local newobj = pool[name].obj
 	if watch then
 		sharedata.host.markdirty(oldcobj)

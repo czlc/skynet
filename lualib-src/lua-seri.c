@@ -559,7 +559,7 @@ seri(lua_State *L, struct block *b, int len) {
 }
 
 int
-_luaseri_unpack(lua_State *L) {
+luaseri_unpack(lua_State *L) {
 	if (lua_isnoneornil(L,1)) {
 		return 0;
 	}
@@ -604,7 +604,7 @@ _luaseri_unpack(lua_State *L) {
 
 // 把栈上参数读进来序列化成一个buffer，并将其作为lightuserdata压入(-2)，另外还压入其size(-1)
 int
-_luaseri_pack(lua_State *L) {
+luaseri_pack(lua_State *L) {
 	struct block temp;	// 开在 stack 上,可以节省一次内存分配释放操作
 	temp.next = NULL;
 	struct write_block wb;

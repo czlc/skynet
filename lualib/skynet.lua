@@ -635,13 +635,7 @@ function skynet.harbor(addr)
 end
 
 -- 向logger服务发送一条信息
-function skynet.error(...)
-	local t = {...}
-	for i=1,#t do
-		t[i] = tostring(t[i])
-	end
-	return c.error(table.concat(t, " "))
-end
+skynet.error = c.error
 
 ----- register protocol
 -- 以下各个协议类型是所有lua服务都会有的
@@ -706,14 +700,14 @@ local function ret(f, ...)
 	return ...						-- 返回start()的结果
 end
 
-local function init_template(start)
+local function init_template(start, ...)
 	init_all()						-- 调用初始化函数
 	init_func = {}
-	return ret(init_all, start())
+	return ret(init_all, start(...))
 end
 
-function skynet.pcall(start)
-	return xpcall(init_template, debug.traceback, start)	-- 为啥这里需要打印堆栈?
+function skynet.pcall(start, ...)
+	return xpcall(init_template, debug.traceback, start, ...)
 end
 
 function skynet.init_service(start)
@@ -759,6 +753,11 @@ end
 -- 指明某个服务已经失效
 function skynet.term(service)
 	return _error_dispatch(0, service)
+end
+
+function skynet.memlimit(bytes)
+	debug.getregistry().memlimit = bytes
+	skynet.memlimit = nil	-- set only once
 end
 
 local function clear_pool()

@@ -30,12 +30,12 @@ function sharedata.query(name)
 end
 
 -- 创建一个sharedata对象，v可以是一个table，一段lua代码，一个文件名或者是nil
-function sharedata.new(name, v)
-	skynet.call(service, "lua", "new", name, v)
+function sharedata.new(name, v, ...)
+	skynet.call(service, "lua", "new", name, v, ...)
 end
 
-function sharedata.update(name, v)
-	skynet.call(service, "lua", "update", name, v)
+function sharedata.update(name, v, ...)
+	skynet.call(service, "lua", "update", name, v, ...)
 end
 
 function sharedata.delete(name)

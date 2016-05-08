@@ -8,6 +8,9 @@
 
 #include "skynet_daemon.h"
 
+/*
+** 读取pidfile，返回相应进程pid
+*/
 static int
 check_pid(const char *pidfile) {
 	int pid = 0;

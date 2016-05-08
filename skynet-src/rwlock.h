@@ -34,6 +34,7 @@ rwlock_rlock(struct rwlock *lock) {
 
 static inline void
 rwlock_wlock(struct rwlock *lock) {
+	// 设置写，避免更多的读
 	while (__sync_lock_test_and_set(&lock->write,1)) {}
 	while(lock->read) {
 		// 等待读结束

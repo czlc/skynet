@@ -23,7 +23,7 @@ spinlock_lock(struct spinlock *lock) {
 	while (__sync_lock_test_and_set(&lock->lock,1)) {}
 }
 
-/* 查看当前能否获得锁，并锁住它 */
+/* 查看当前能否获得锁，并锁住它(之前的lock->lock值为0才能锁得住) */
 static inline int
 spinlock_trylock(struct spinlock *lock) {
 	return __sync_lock_test_and_set(&lock->lock,1) == 0;

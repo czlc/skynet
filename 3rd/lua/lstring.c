@@ -45,7 +45,9 @@ int luaS_eqlngstr (TString *a, TString *b) {
      (memcmp(getstr(a), getstr(b), len) == 0));  /* equal contents */
 }
 
-
+/*
+** 将一个长度为l的字符串str哈希成一个uint
+*/
 unsigned int luaS_hash (const char *str, size_t l, unsigned int seed) {
   unsigned int h = seed ^ cast(unsigned int, l);
   size_t step = (l >> LUAI_HASHLIMIT) + 1;
@@ -270,13 +272,17 @@ struct shrmap_slot {
 	TString *str;
 };
 
+/**/
 struct shrmap {
 	struct shrmap_slot h[SHRSTR_SLOT];
-	int n;	// 剩余共享空间
+	int n;	// 剩余共享空间，超出这个值后将和原版lua一样，存到state下
 };
 
 static struct shrmap SSM;
 
+/*
+** 初始化全局共享字符串结构
+*/
 LUA_API void
 luaS_initshr() {
 	struct shrmap * s = &SSM;
@@ -286,6 +292,9 @@ luaS_initshr() {
 	}
 }
 
+/*
+** 进程退出的时候释放所有共享字符串
+*/
 LUA_API void
 luaS_exitshr() {
 	int i;
@@ -299,6 +308,11 @@ luaS_exitshr() {
 	}
 }
 
+/*
+** 在全局共享表中查找字符串
+**
+** h是string的rehash值
+*/
 static TString *
 query_string(unsigned int h, const char *str, lu_byte l) {
 	struct shrmap_slot *s = &SSM.h[HASH_NODE(h)];
@@ -395,6 +409,9 @@ internshrstr (lua_State *L, const char *str, size_t l) {
   return addshrstr (L, str, l, h);
 }
 
+/*
+** 扩展全局字符串容量
+*/
 LUA_API void
 luaS_expandshr(int n) {
   ATOM_ADD(&SSM.n, n);
@@ -445,6 +462,9 @@ getslot(struct shrmap_slot *s, struct slotinfo *info) {
 	rwlock_runlock(&s->lock);
 }
 
+/*
+** 输出全局共享字符串状况
+*/
 LUA_API int
 luaS_shrinfo(lua_State *L) {
 	struct slotinfo total;

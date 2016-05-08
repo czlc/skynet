@@ -11,6 +11,16 @@
 #define ATOM_SUB(ptr,n) __sync_sub_and_fetch(ptr, n)
 #define ATOM_AND(ptr,n) __sync_and_and_fetch(ptr, n)
 
+/* 
+** acquire barrier:它保证本指令执行完之后才执行它之后的指令。但是有可能它之前的指令
+** 还没有被执行
+**
+** release barrier:它保证本指令执行的时候它之前的所有指令都已经执行完成。但是有可能
+** 它之后的指令先于它执行
+**
+** full barrier:Acquire + Release
+*/
+
 /*
 比较ptr所指向的内容和oldvalue，如果相等，则将newval写入ptr所指向的位置，并返回true
 	bool __sync_bool_compare_and_swap (type *ptr, type oldval type newval, ...)
@@ -21,7 +31,7 @@
 
 
 /*
-	执行操作，并返回修改过后的值
+	执行操作，并返回修改过后的值, full barrier
 
 	type __sync_add_and_fetch (type *ptr, type value, ...)
 	type __sync_sub_and_fetch (type *ptr, type value, ...)
@@ -47,18 +57,21 @@ This builtin issues a full memory barrier.
 */
 
 /*
-和名字不相符，它并没有做test，仅仅是一个原子赋值操作(atomic exchange operation)
-它将value写入ptr并返回之前的value
-
-大部分机器只支持value为数值1
-
- 
-This builtin is not a full barrier, but rather an acquire barrier.This means 
-that references after the builtin cannot move to (or be speculated to) before 
-the builtin, but previous memory stores may not be globally visible yet, and 
-previous memory loads may not yet be satisfied. 
-
-	type __sync_lock_test_and_set (type *ptr, type value, ...)
+** This builtin, as described by Intel, is not a traditional test-and-set operation,
+** but rather an atomic exchange operation. It writes value into *ptr, and returns 
+** the previous contents of *ptr.
+**
+** Many targets have only minimal support for such locks, and do not support a full
+** exchange operation. In this case, a target may support reduced functionality here
+** by which the only valid value to store is the immediate constant 1. The exact value
+** actually stored in *ptr is implementation defined.
+**
+** This builtin is not a full barrier, but rather an acquire barrier. This means that
+** references after the builtin cannot move to (or be speculated to) before the builtin,
+** but previous memory stores may not be globally visible yet, and previous memory loads
+** may not yet be satisfied. 
+**
+**			type __sync_lock_test_and_set (type *ptr, type value, ...)
 */
 
 

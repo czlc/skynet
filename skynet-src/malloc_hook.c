@@ -21,6 +21,7 @@ typedef struct _mem_data {
 // PREFIX_SIZE 用来存分配内存的服务handle，其实是放在末尾的
 #define PREFIX_SIZE sizeof(uint32_t)
 
+/* 每个服务的内存情况，索引是服务的handle，static 变量初始为0 */
 static mem_data mem_stats[SLOT_SIZE];
 
 
@@ -32,7 +33,9 @@ static mem_data mem_stats[SLOT_SIZE];
 #define raw_realloc je_realloc
 #define raw_free je_free
 
-/* 获得某个服务的内存占用状态 */
+/*
+** 获得某个服务的内存占用量
+*/
 static ssize_t*
 get_allocated_field(uint32_t handle) {
 	int h = (int)(handle & (SLOT_SIZE - 1));
@@ -46,7 +49,7 @@ get_allocated_field(uint32_t handle) {
 			// 说明瞬间被别人占用
 			return 0;
 		}
-		// 初始化
+		// 初始化为0
 		if (old_alloc < 0) {
 			ATOM_CAS(&data->allocated, old_alloc, 0);
 		}
@@ -58,6 +61,11 @@ get_allocated_field(uint32_t handle) {
 	return &data->allocated;
 }
 
+/*
+** 为handle服务增加内存占用值
+** 
+** __n是这次分配的长度
+*/
 inline static void 
 update_xmalloc_stat_alloc(uint32_t handle, size_t __n) {
 	ATOM_ADD(&_used_memory, __n);
@@ -68,7 +76,11 @@ update_xmalloc_stat_alloc(uint32_t handle, size_t __n) {
 	}
 }
 
-/* 分配内存 or 释放内存 的时候更新一些统计信息 */
+/* 
+** 为handle服务减少内存占用值
+** 
+** __n是这次释放的长度
+*/
 inline static void
 update_xmalloc_stat_free(uint32_t handle, size_t __n) {
 	ATOM_SUB(&_used_memory, __n);
@@ -79,6 +91,9 @@ update_xmalloc_stat_free(uint32_t handle, size_t __n) {
 	}
 }
 
+/*
+** 将handle 放到末尾，并设置其内存占用量
+*/
 inline static void*
 fill_prefix(char* ptr) {
 	uint32_t handle = skynet_current_handle();
@@ -201,11 +216,17 @@ mallctl_opt(const char* name, int* newval) {
 
 #endif
 
+/*
+** 所有的服务总的内存占用量
+*/
 size_t
 malloc_used_memory(void) {
 	return _used_memory;
 }
 
+/*
+** 所有的服务总的内存分配block数
+*/
 size_t
 malloc_memory_block(void) {
 	return _memory_block;
@@ -226,6 +247,9 @@ dump_c_mem() {
 	skynet_error(NULL, "+total: %zdkb",total >> 10);
 }
 
+/*
+** 复制一个字符串
+*/
 char *
 skynet_strdup(const char *str) {
 	size_t sz = strlen(str);
@@ -258,7 +282,9 @@ dump_mem_lua(lua_State *L) {
 	return 1;
 }
 
-/* 获得当前服务的内存用量 */
+/* 
+** 获得当前服务的内存用量
+*/
 size_t
 malloc_current_memory(void) {
 	uint32_t handle = skynet_current_handle();

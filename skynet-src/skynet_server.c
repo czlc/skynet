@@ -45,7 +45,7 @@ struct skynet_context {
 	void * cb_ud;					// 回调函数参数，它将作为回调函数的第二个参数，本ctx是第一个参数
 	skynet_cb cb;					// 服务的回调函数
 	struct message_queue *queue;	// 本服务的消息队列
-	FILE * logfile;					// 服务的日志文件
+	FILE * logfile;					// 服务的日志文件，在cmd_logon中被设置
 	char result[32];				// 用于临时存cmd的返回字符串
 	uint32_t handle;				// 服务的句柄
 	int session_id;					// session id gen，session是各个服务独立的

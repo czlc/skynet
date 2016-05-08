@@ -1,3 +1,4 @@
+/* 服务相关的log，通过cmd开启，它会记录此服务收到的每一个message，用于调试 */
 #include "skynet_log.h"
 #include "skynet_timer.h"
 #include "skynet.h"

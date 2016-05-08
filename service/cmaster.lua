@@ -27,7 +27,7 @@ local socket = require "socket"
 ]]
 
 local slave_node = {}  -- 连接上来的slave [slave_id] -> {fd, id, addr}
-local global_name = {}	-- slave的全局名字 [globalname] -> addr
+local global_name = {}	-- slave的全局名字 [globalname] -> serivce addr
 
 local function read_package(fd)
 	local sz = socket.read(fd, 1)	-- package size 1 byte
@@ -80,10 +80,10 @@ end
 local function dispatch_slave(fd)
 	local t, name, address = read_package(fd)
 	if t == 'R' then
-		-- register name
+		-- register name，全局的
 		assert(type(address)=="number", "Invalid request")
 		if not global_name[name] then
-			global_name[name] = address
+			global_name[name] = address	-- name 为全局服务名，address为服务的handle
 		end
 		local message = pack_package("N", name, address)
 		for k,v in pairs(slave_node) do	-- 同步 给所有的slave
@@ -104,7 +104,7 @@ end
 local function monitor_slave(slave_id, slave_address)
 	local fd = slave_node[slave_id].fd
 	skynet.error(string.format("Harbor %d (fd=%d) report %s", slave_id, fd, slave_address))
-	while pcall(dispatch_slave, fd) do end
+	while pcall(dispatch_slave, fd) do end --死循环处理slave消息
 	skynet.error("slave " ..slave_id .. " is down")
 	local message = pack_package("D", slave_id)
 	slave_node[slave_id].fd = 0	-- 并未清除slave_node[slave_id]是为了重启后不能复用，否则id冲突

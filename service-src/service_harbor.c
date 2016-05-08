@@ -592,7 +592,7 @@ handshake(struct harbor *h, int id) {
 	skynet_socket_send(h->ctx, s->fd, handshake, 1); // 发送harbor id
 }
 
-// 处理收到的harbor类型协议
+// 处理收到的harbor类型协议，见cslave
 static void
 harbor_command(struct harbor * h, const char * msg, size_t sz, int session, uint32_t source) {
 	const char * name = msg + 2;

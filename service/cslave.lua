@@ -179,6 +179,7 @@ local function monitor_harbor(master_fd)
 	end
 end
 
+-- 注册一个全局名字
 -- fd是master的socket id，name是要注册的名字，handle是名字对应的服务handle
 function harbor.REGISTER(fd, name, handle)
 	assert(globalname[name] == nil)
@@ -217,7 +218,7 @@ function harbor.CONNECT(fd, id)
 	end
 end
 
--- 可以用来查询全局名字或本地名字对应的服务地址。它是一个阻塞调用。
+-- 可以用来查询全局名字或本地名字对应的服务地址
 function harbor.QUERYNAME(fd, name)
 	if name:byte() == 46 then	-- "." , local name
 		skynet.ret(skynet.pack(skynet.localname(name)))

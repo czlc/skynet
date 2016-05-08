@@ -441,7 +441,7 @@ function skynet.ret(msg, sz)
 end
 
 --[[
-	获得一个闭包，以后调用这个闭包即可把回应消息发回。这里的参数 skynet.pack 是可选的，你可以传入
+	请求接收方调用，返回一个闭包，以后调用这个闭包即可把回应消息发回。这里的参数 skynet.pack 是可选的，你可以传入
 	其它打包函数，默认即是 skynet.pack 。
 
 	skynet.response 返回的闭包可用于延迟回应。调用它时，第一个参数通常是 true 表示是一个正常的回应
@@ -611,6 +611,7 @@ function skynet.uniqueservice(global, ...)
 end
 
 -- 查询一个全局服务，参数和skynet.uniqueservice一致
+-- global 为true的时候表示在整个网络唯一，否则global为service name，表示在本结点唯一
 -- skynet.queryservice 来查询已有服务。如果这个服务不存在，这个 api 会一直阻塞到它启动好为止
 function skynet.queryservice(global, ...)
 	if global == true then

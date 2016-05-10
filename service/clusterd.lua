@@ -61,6 +61,7 @@ function command.listen(source, addr, port)
 	skynet.ret(skynet.pack(nil))
 end
 
+-- 请求的时候支持重连
 local function send_request(source, node, addr, msg, sz)
 	local session = node_session[node] or 1
 	-- msg is a local pointer, cluster.packrequest will free it，卧槽，外面用怎么办?
@@ -119,7 +120,7 @@ local large_request = {}
 function command.socket(source, subcmd, fd, msg)
 	if subcmd == "data" then
 		local sz
-		local addr, session, msg, padding = cluster.unpackrequest(msg)
+		local addr, session, msg, padding = cluster.unpackrequest(msg) -- addr 可能是服务名，也可能是handle
 		if padding then
 			local req = large_request[session] or { addr = addr }
 			large_request[session] = req

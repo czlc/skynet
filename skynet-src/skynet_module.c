@@ -138,7 +138,7 @@ skynet_module_instance_create(struct skynet_module *m) {
 	if (m->create) {
 		return m->create();
 	} else {
-		return (void *)(intptr_t)(~0);
+		return (void *)(intptr_t)(~0); /* intptr_t可以保存指针 */
 	}
 }
 

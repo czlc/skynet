@@ -337,6 +337,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lua-md5", "lua-md5", "{383E
 		3rd\lua-md5\README = 3rd\lua-md5\README
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "mk", "mk", "{1E635936-13A2-4E2B-B99B-CCB5FC233E69}"
+	ProjectSection(SolutionItems) = preProject
+		Makefile = Makefile
+		platform.mk = platform.mk
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

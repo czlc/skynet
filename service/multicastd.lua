@@ -79,13 +79,13 @@ local function publish(c , source, pack, size)
 
 	local group = channel[c]
 	if group == nil or next(group) == nil then
-		-- dead channel, delete the pack. mc.bind returns the pointer in pack
+		-- dead channel, delete the pack. mc.bind returns the pointer in pack and free the pack (struct mc_package **)
 		local pack = mc.bind(pack, 1)
 		mc.close(pack)
 		return
 	end
-	mc.bind(pack, channel_n[c])	-- 设置引用计数
-	local msg = skynet.tostring(pack, size)
+	local msg = skynet.tostring(pack, size)	-- copy (pack,size) to a string
+	mc.bind(pack, channel_n[c])	-- mc.bind will free the pack(struct mc_package **)
 	for k in pairs(group) do
 		-- the msg is a pointer to the real message, publish pointer in local is ok.
 		skynet.redirect(k, source, "multicast", c , msg)
@@ -103,7 +103,6 @@ skynet.register_protocol {
 
 -- publish a message, if the caller is remote, forward the message to the owner node (by remote_publish)
 -- If the caller is local, call publish
--- pack 是
 function command.PUB(source, c, pack, size)
 	assert(skynet.harbor(source) == harbor_id) -- 只能本地节点调用
 	local node = c % 256

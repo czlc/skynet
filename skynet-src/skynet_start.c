@@ -16,14 +16,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 struct monitor {
-	int count;						// 监控器数量，每个worker一个
-	struct skynet_monitor ** m;		// 线程监控器数组
-	pthread_cond_t cond;			// 条件变量
-	pthread_mutex_t mutex;			// 互斥体对象
-	int sleep;						// 休息线程个数
-	int quit;						// 是否处于退出流程
+	int count;
+	struct skynet_monitor ** m;
+	pthread_cond_t cond;
+	pthread_mutex_t mutex;
+	int sleep;
+	int quit;
 };
 
 struct worker_parm {
@@ -31,6 +32,15 @@ struct worker_parm {
 	int id;
 	int weight;
 };
+
+static int SIG = 0;
+
+static void
+handle_hup(int signal) {
+	if (signal == SIGHUP) {
+		SIG = 1;
+	}
+}
 
 #define CHECK_ABORT if (skynet_context_total()==0) break;
 
@@ -103,6 +113,21 @@ thread_monitor(void *p) {
 	return NULL;
 }
 
+static void
+signal_hup() {
+	// make log file reopen
+
+	struct skynet_message smsg;
+	smsg.source = 0;
+	smsg.session = 0;
+	smsg.data = NULL;
+	smsg.sz = (size_t)PTYPE_SYSTEM << MESSAGE_TYPE_SHIFT;
+	uint32_t logger = skynet_handle_findname("logger");
+	if (logger) {
+		skynet_context_push(logger, &smsg);
+	}
+}
+
 static void *
 thread_timer(void *p) {
 	struct monitor * m = p;
@@ -112,6 +137,10 @@ thread_timer(void *p) {
 		CHECK_ABORT
 		wakeup(m,m->count-1);	// 要求m_count-1个busy，timer 消息是 first class 的,一次是一串. timer update 线程也起到定期把进程加热的功能
 		usleep(2500);			// 2.5ms
+		if (SIG) {
+			signal_hup();
+			SIG = 0;
+		}
 	}
 	// wakeup socket thread
 	skynet_socket_exit();
@@ -220,8 +249,14 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 
 void 
 skynet_start(struct skynet_config * config) {
+	// register SIGHUP for log file reopen
+	struct sigaction sa;
+	sa.sa_handler = &handle_hup;
+	sa.sa_flags = SA_RESTART;
+	sigfillset(&sa.sa_mask);
+	sigaction(SIGHUP, &sa, NULL);
+
 	if (config->daemon) {
-		// 避免多次启动
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}

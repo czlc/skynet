@@ -4,6 +4,8 @@ local core = require "skynet.core"
 local socket = require "socket"
 local snax = require "snax"
 local memory = require "memory"
+local httpd = require "http.httpd"
+local sockethelper = require "http.sockethelper"
 
 local port = tonumber(...)
 local COMMAND = {}
@@ -84,6 +86,13 @@ local function console_main_loop(stdin, print)
 			if not cmdline then
 				break
 			end
+			if cmdline:sub(1,4) == "GET " then
+				-- http
+				local code, url = httpd.read_request(sockethelper.readfunc(stdin, cmdline.. "\n"), 8192)
+				local cmdline = url:sub(2):gsub("/"," ")
+				docmd(cmdline, print, stdin)
+				break
+			end
 			if cmdline ~= "" then
 				docmd(cmdline, print, stdin)
 			end
@@ -115,7 +124,7 @@ function COMMAND.help()
 		help = "This help message",
 		list = "List all the service",
 		stat = "Dump all stats",
-		info = "Info address : get service infomation",
+		info = "info address : get service infomation",
 		exit = "exit address : kill a lua service",
 		kill = "kill address : kill service",
 		mem = "mem : show memory status",
@@ -133,6 +142,7 @@ function COMMAND.help()
 		signal = "signal address sig",
 		cmem = "Show C memory info",
 		shrtbl = "Show shared short string table info",
+		ping = "ping address",
 	}
 end
 
@@ -228,9 +238,9 @@ function COMMAND.task(fd, address)
 	return skynet.call(address,"debug","TASK")
 end
 
-function COMMAND.info(fd, address)
+function COMMAND.info(fd, address, ...)
 	address = adjust_address(address)
-	return skynet.call(address,"debug","INFO")
+	return skynet.call(address,"debug","INFO", ...)
 end
 
 -- 针对一个 lua 服务启动内置的单步调试
@@ -288,4 +298,12 @@ function COMMAND.shrtbl()
 	-- space:剩余空间(还可以存新字符串个数)
 	local n, total, longest, space = memory.ssinfo()
 	return { n = n, total = total, longest = longest, space = space }
+end
+
+function COMMAND.ping(fd, address)
+	address = adjust_address(address)
+	local ti = skynet.now()
+	skynet.call(address, "debug", "PING")
+	ti = skynet.now() - ti
+	return tostring(ti)
 end

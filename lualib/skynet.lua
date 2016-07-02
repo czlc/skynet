@@ -103,7 +103,7 @@ end
 
 -- coroutine reuse http://blog.codingnow.com/2013/07/coroutine_reuse.html
 
-local coroutine_pool = {}
+local coroutine_pool = setmetatable({}, { __mode = "kv" })
 
 local function co_create(f)
 	local co = table.remove(coroutine_pool)
@@ -760,15 +760,10 @@ function skynet.memlimit(bytes)
 	skynet.memlimit = nil	-- set only once
 end
 
-local function clear_pool()
-	coroutine_pool = {}
-end
-
 -- Inject internal debug framework
 local debug = require "skynet.debug"
-debug(skynet, {
+debug.init(skynet, {
 	dispatch = skynet.dispatch_message,
-	clear = clear_pool,
 	suspend = suspend,
 })
 

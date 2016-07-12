@@ -18,8 +18,8 @@ function sproto.new(bin)
 	local cobj = assert(core.newproto(bin))
 	local self = {
 		__cobj = cobj,
-		__tcache = setmetatable( {} , weak_mt ),
-		__pcache = setmetatable( {} , weak_mt ),
+		__tcache = setmetatable( {} , weak_mt ),	-- 类型
+		__pcache = setmetatable( {} , weak_mt ),	-- 协议
 	}
 	return setmetatable(self, sproto_mt)
 end
@@ -33,8 +33,8 @@ function sproto.sharenew(cobj)
 	return setmetatable(self, sproto_nogc)
 end
 
--- 解析协议包字符串并生成协议组对象
--- 拥有功能：encode,decode,pencode, pdecode
+-- 解析协议包字符串并，将其导入到c结构中，并生成相应的协议组对象(userdata)
+-- 挂接mt之后拥有功能：encode,decode,pencode, pdecode
 function sproto.parse(ptext)
 	local parser = require "sprotoparser"
 	local pbin = parser.parse(ptext)
@@ -47,14 +47,14 @@ function sproto:host( packagename )
 	packagename = packagename or  "package"
 	local obj = {
 		__proto = self, -- 协议组对象
-		__package = assert(core.querytype(self.__cobj, packagename), "type package not found"), -- 缓存package类型
+		__package = assert(core.querytype(self.__cobj, packagename), "type package not found"), -- 协议头
 		__session = {},
 	}
 	return setmetatable(obj, host_mt)
 end
 
 -- queries a type object from a sproto object by typename.
--- type 也是lightuserdata类型
+-- 返回type 它是lightuserdata类型
 local function querytype(self, typename)
 	local v = self.__tcache[typename]
 	if not v then
@@ -97,10 +97,12 @@ function sproto:pdecode(typename, ...)
 	return core.decode(st, core.unpack(...))
 end
 
+
+-- 查找pnam(协议名或者协议tag)指定的协议request和response类型对象
 local function queryproto(self, pname)
 	local v = self.__pcache[pname]
 	if not v then
-		local tag, req, resp = core.protocol(self.__cobj, pname)
+		local tag, req, resp = core.protocol(self.__cobj, pname)	-- tag, 请求lightuserdata，应答lightuserdata
 		assert(tag, pname .. " not found")
 		if tonumber(pname) then
 			pname, tag = tag, pname
@@ -128,6 +130,7 @@ function sproto:exist_proto(pname)
 	end
 end
 
+-- protoname是协议名
 function sproto:request_encode(protoname, tbl)
 	local p = queryproto(self, protoname)
 	local request = p.request
@@ -169,6 +172,7 @@ end
 sproto.pack = core.pack	-- packs a string encoded by sproto.encode to reduce the size.
 sproto.unpack = core.unpack	-- unpacks the string packed by sproto.pack.
 
+-- type 表面是REQUEST或者是RESPONSE
 function sproto:default(typename, type)
 	if type == nil then
 		return core.default(querytype(self, typename))
@@ -208,29 +212,31 @@ local function gen_response(self, response, session)
 end
 
 -- 处理对方发来的请求
+-- retuen "REQUEST", 请求类型名，请求内容,
+-- return "RESPONSE"
 function host:dispatch(...)
-	local bin = core.unpack(...)	-- 解包协议
+	local bin = core.unpack(...)	-- 解包请求内容协议
 	header_tmp.type = nil
 	header_tmp.session = nil
 	header_tmp.ud = nil
 	local header, size = core.decode(self.__package, bin, header_tmp) -- 解码协议头
-	local content = bin:sub(size + 1)
-	if header.type then
+	local content = bin:sub(size + 1)	-- 去掉头，剩下具体内容
+	if header.type then	-- type是请求类型
 		-- request
-		-- 收到对方的请求
-		local proto = queryproto(self.__proto, header.type) -- 获得协议对象
+		local proto = queryproto(self.__proto, header.type) -- 获得协议对象，包括请求和应答类型, name, tag
 		local result
 		if proto.request then
-			result = core.decode(proto.request, content) -- 解码协议内容
+			result = core.decode(proto.request, content) -- 解码请求协议内容
 		end
 		if header_tmp.session then
-			-- request 确定了则应答也就确定了
+			-- request 确定了则应答函数也就确定了
 			return "REQUEST", proto.name, result, gen_response(self, proto.response, header_tmp.session), header.ud
 		else
 			return "REQUEST", proto.name, result, nil, header.ud
 		end
 	else
 		-- response
+		-- 收到对方应答
 		local session = assert(header_tmp.session, "session not found")
 		local response = assert(self.__session[session], "Unknown session")
 		self.__session[session] = nil
@@ -243,9 +249,9 @@ function host:dispatch(...)
 	end
 end
 
--- 创建协议发生器，sp是对方的协议组对象，这样就能根据对方要求的协议格式打包请求
+-- 返回一个协议打包器, sp是对方的协议
 function host:attach(sp)
-	-- 此函数返回打包好的请求， session是会话id，表明是否需要回应
+	-- 调用打包器，name是协议名，args是协议table，返回打包好的请求， session是会话id，表明是否需要回应
 	return function(name, args, session, ud)
 		local proto = queryproto(sp, name)	-- 获得协议对象
 		header_tmp.type = proto.tag

@@ -94,7 +94,7 @@ lnewbuffer(lua_State *L) {
 	and the first index [1] is a lightuserdata : free_node. We can always use this pointer for struct buffer_node .
 	The following ([2] ...)  userdatas in table pool is the buffer chunk (for struct buffer_node), 
 	we never free them until the VM closed(因为是userdata，可以自动释放，但是其下的msg需要逐一释放:见lnewpool). The size of first
-	chunk ([2]) is 8 struct buffer_node,and the second size is 16 ... The largest size of chunk is LARGE_PAGE_NODE (4096)
+	chunk ([2]) is 16 struct buffer_node,and the second size is 32 ... The largest size of chunk is LARGE_PAGE_NODE (4096)
 
 	lpushbbuffer will get a free struct buffer_node from table pool, and then put the msg/size in it.
 	lpopbuffer return the struct buffer_node back to table pool (By calling return_free_node).

@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 #include "skynet_daemon.h"
 
@@ -32,7 +33,7 @@ check_pid(const char *pidfile) {
 	return pid;
 }
 
-static int 
+static int
 write_pid(const char *pidfile) {
 	FILE *f;
 	int pid = 0;
@@ -57,7 +58,7 @@ write_pid(const char *pidfile) {
 		}
 		return 0;
 	}
-	
+
 	pid = getpid();
 	if (!fprintf(f,"%d\n", pid)) {
 		fprintf(stderr, "Can't write pid.\n");
@@ -95,7 +96,7 @@ daemon_init(const char *pidfile) {
 	return 0;
 }
 
-int 
+int
 daemon_exit(const char *pidfile) {
 	return unlink(pidfile);	// É¾³ýpidfile
 }

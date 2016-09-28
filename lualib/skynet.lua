@@ -414,6 +414,8 @@ end
 -- skynet.call 仅仅阻塞住当前的 coroutine ，而没有阻塞整个服务。在等待
 -- 回应期间，服务照样可以相应其他请求。所以，尤其要注意，在 skynet.call
 --  之前获得的服务内的状态，到返回后，很有可能改变
+
+-- 可能会抛出异常，所以外面需要pcall
 function skynet.call(addr, typename, ...)
 	local p = proto[typename]
 	local session = c.send(addr, p.id , nil , p.pack(...))
@@ -441,7 +443,8 @@ function skynet.ret(msg, sz)
 end
 
 --[[
-	请求接收方调用，返回一个闭包，以后调用这个闭包即可把回应消息发回。这里的参数 skynet.pack 是可选的，你可以传入
+	收到请求还不想立即返回，可以通过此函数返回一个闭包，闭包调用的时候才真正返回
+	接收方调用，返回一个闭包，以后调用这个闭包即可把回应消息发回。这里的参数 skynet.pack 是可选的，你可以传入
 	其它打包函数，默认即是 skynet.pack 。
 
 	skynet.response 返回的闭包可用于延迟回应。调用它时，第一个参数通常是 true 表示是一个正常的回应

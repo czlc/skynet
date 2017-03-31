@@ -1,3 +1,4 @@
+#define LUA_LIB
 /* 协议规定，对于每一个网络包，前面2个字节为包的大小，后面是包的内容，此lib的作用就在于组包 */
 #include "skynet_malloc.h"
 
@@ -488,7 +489,7 @@ ltostring(lua_State *L) {
 	return 1;
 }
 
-int
+LUAMOD_API int
 luaopen_netpack(lua_State *L) {
 	luaL_checkversion(L);
 	luaL_Reg l[] = {

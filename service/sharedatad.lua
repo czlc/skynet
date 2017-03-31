@@ -8,6 +8,7 @@ local NORET = {}
 local pool = {}
 local pool_count = {}
 local objmap = {}			-- [cobj] = { value = tbl , obj = cobj, watch = {} }，便于查找
+local collect_tick = 600
 
 -- tbl 是需要共享的lua table
 local function newobj(name, tbl)
@@ -17,20 +18,31 @@ local function newobj(name, tbl)
 	local v = { value = tbl , obj = cobj, watch = {} }
 	objmap[cobj] = v
 	pool[name] = v
-	pool_count[name] = { n = 0, threshold = 16 }	-- n 是监控者数目，threshold是监控者上限
+	pool_count[name] = { n = 0, threshold = 16 }
+end
+
+local function collect10sec()
+	if collect_tick > 10 then
+		collect_tick = 10
+	end
 end
 
 local function collectobj()
 	while true do
-		skynet.sleep(600 * 100)	-- sleep 10 min
-		collectgarbage()
-		for obj, v in pairs(objmap) do
-			if v == true then
-				if sharedata.host.getref(obj) <= 0  then
-					objmap[obj] = nil
-					sharedata.host.delete(obj)
+		skynet.sleep(100)	-- sleep 1s
+		if collect_tick <= 0 then
+			collect_tick = 600	-- reset tick count to 600 sec
+			collectgarbage()
+			for obj, v in pairs(objmap) do
+				if v == true then
+					if sharedata.host.getref(obj) <= 0  then
+						objmap[obj] = nil
+						sharedata.host.delete(obj)
+					end
 				end
 			end
+		else
+			collect_tick = collect_tick - 1
 		end
 	end
 end
@@ -49,8 +61,7 @@ function CMD.new(name, t, ...)
 		value = setmetatable({}, env_mt)
 		local f
 		if t:sub(1,1) == "@" then
-			-- 也可以是一个文件
-			f = assert(loadfile(t:sub(2),"bt",value))	-- Q:liuchang 为何不直接传入_ENV，因为代码中可能会修改当前_ENV?
+			f = assert(loadfile(t:sub(2),"bt",value))
 		else
 			-- 还可以是一段 lua 文本代码
 			f = assert(load(t, "=" .. name, "bt", value))
@@ -115,6 +126,7 @@ function CMD.update(name, t, ...)
 			response(true, newobj)
 		end
 	end
+	collect10sec()	-- collect in 10 sec
 end
 
 local function check_watch(queue)

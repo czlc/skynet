@@ -1,3 +1,5 @@
+#define LUA_LIB
+
 #include "skynet.h"
 
 #include <lua.h>
@@ -146,7 +148,7 @@ mc_nextid(lua_State *L) {
 	return 1;
 }
 
-int
+LUAMOD_API int
 luaopen_multicast_core(lua_State *L) {
 	luaL_Reg l[] = {
 		{ "pack", mc_packlocal },

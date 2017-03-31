@@ -4,6 +4,7 @@
 struct skynet_config {
 	int thread;					// 线程数
 	int harbor;					// harbor id
+	int profile;
 	const char * daemon;		// daemon name
 	const char * module_path;	// cpath，各个service的so文件目录
 	const char * bootstrap;		// 启动服务

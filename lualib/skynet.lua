@@ -6,6 +6,7 @@ local coroutine = coroutine
 local assert = assert
 local pairs = pairs
 local pcall = pcall
+local table = table
 
 local profile = require "profile"
 
@@ -36,7 +37,7 @@ skynet.cache = require "skynet.codecache"
 function skynet.register_protocol(class)
 	local name = class.name
 	local id = class.id
-	assert(proto[name] == nil)
+	assert(proto[name] == nil and proto[id] == nil)
 	assert(type(name) == "string" and type(id) == "number" and id >=0 and id <=255)
 	proto[name] = class
 	proto[id] = class
@@ -44,16 +45,16 @@ end
 
 local session_id_coroutine = {}			-- [session] = co，等待对方(session)回应的列表，co是发送了请求之后被yield的协程，因为等待回应是通过sesion做标识，所以session为key
 local session_coroutine_id = {}			-- [co] = session，收到的请求列表for session。co:处理请求的协程，session:请求id
-local session_coroutine_address = {}	-- [co] = addr，收到的请求列表for addr。co:处理请求的协程，addr:请求方对方地址
-local session_response = {}				-- [co] = closure，本服务待回应的请求，调用closure的时候会回应 http://blog.codingnow.com/2014/07/skynet_response.html
-local unresponse = {}					-- [closure] = true/false，记录等待调用的闭包，用于退出的时候返回通知等待方？
+local session_coroutine_address = {}
+local session_response = {}
+local unresponse = {}
 
-local wakeup_session = {}				-- [co] = true 已经醒来的协程等待执行
-local sleep_session = {}				-- [co] = true 睡眠中的协程
+local wakeup_queue = {}
+local sleep_session = {}
 
-local watching_service = {}				-- 所关注的服务，[source] = ref
-local watching_session = {}				-- [session] = addr，session是call的会话id，addr是目标服务
-local dead_service = {}					-- [service] = true，记录已经无效的服务，不过如果service id复用的话，就会有问题
+local watching_service = {}
+local watching_session = {}
+local dead_service = {}
 local error_queue = {}					-- 出错的session列表
 local fork_queue = {}					-- 待执行的fork队列
 
@@ -62,7 +63,7 @@ local suspend
 
 -- 十六进制地址(:00000000)转number
 local function string_to_handle(str)
-	return tonumber("0x" .. string.sub(str, 2))
+	return tonumber("0x" .. string.sub(str , 2))
 end
 
 ----- monitor exit
@@ -124,9 +125,8 @@ local function co_create(f)
 end
 
 local function dispatch_wakeup()
-	local co = next(wakeup_session)
+	local co = table.remove(wakeup_queue,1)
 	if co then
-		wakeup_session[co] = nil
 		local session = sleep_session[co]
 		if session then
 			session_id_coroutine[session] = "BREAK"			-- 打断sleep，继续执行
@@ -176,6 +176,12 @@ function suspend(co, result, command, param, size)
 		sleep_session[co] = param
 	elseif command == "RETURN" then			-- 回应actor请求
 		local co_session = session_coroutine_id[co]
+		if co_session == 0 then
+			if size ~= nil then
+				c.trash(param, size)
+			end
+			return suspend(co, coroutine_resume(co, false))	-- send don't need ret
+		end
 		local co_address = session_coroutine_address[co]
 		if param == nil or session_response[co] then
 			error(debug.traceback(co))
@@ -220,7 +226,8 @@ function suspend(co, result, command, param, size)
 			end
 
 			local ret
-			if not dead_service[co_address] then
+			-- do not response when session == 0 (send)
+			if co_session ~= 0 and not dead_service[co_address] then
 				if ok then
 					ret = c.send(co_address, skynet.PTYPE_RESPONSE, co_session, f(...)) ~= nil
 					if not ret then
@@ -381,6 +388,11 @@ function skynet.send(addr, typename, ...)
 	return c.send(addr, p.id, 0 , p.pack(...))
 end
 
+function skynet.rawsend(addr, typename, msg, sz)
+	local p = proto[typename]
+	return c.send(addr, p.id, 0 , msg, sz)
+end
+
 skynet.genid = assert(c.genid)
 
 -- 重定向，伪造source向dest发送消息
@@ -464,8 +476,8 @@ end
 
 -- 标记某sleep、wait的协程可以被唤醒
 function skynet.wakeup(co)
-	if sleep_session[co] and wakeup_session[co] == nil then
-		wakeup_session[co] = true
+	if sleep_session[co] then
+		table.insert(wakeup_queue, co)
 		return true
 	end
 end
@@ -515,10 +527,11 @@ end
 
 -- 处理一个消息
 local function raw_dispatch_message(prototype, msg, sz, session, source)
-	if prototype == skynet.PTYPE_RESPONSE then
+	-- skynet.PTYPE_RESPONSE = 1, read skynet.h
+	if prototype == 1 then
 		-- 收到actor回应
-		local co = session_id_coroutine[session]	-- 查找等待回应的协程
-		if co == "BREAK" then						-- 此sleep协程已经被wakeup了
+		local co = session_id_coroutine[session]
+		if co == "BREAK" then
 			session_id_coroutine[session] = nil
 		elseif co == nil then						-- 等待回应的协程没了？
 			unknown_response(session, source, msg, sz)
@@ -553,6 +566,8 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 			session_coroutine_id[co] = session
 			session_coroutine_address[co] = source
 			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))
+		elseif session ~= 0 then
+			c.send(source, skynet.PTYPE_ERROR, session, "")
 		else
 			unknown_request(session, source, msg, sz, proto[prototype].name)	-- 没有处理函数
 		end
@@ -734,12 +749,16 @@ end
 
 -- 查看本服务是否在处理某个消息超时，超时的时候core会设置一个状态
 function skynet.endless()
-	return c.command("ENDLESS")~=nil
+	return (c.intcommand("STAT", "endless") == 1)
 end
 
 -- 获得消息队列的长度
 function skynet.mqlen()
-	return c.intcommand "MQLEN"
+	return c.intcommand("STAT", "mqlen")
+end
+
+function skynet.stat(what)
+	return c.intcommand("STAT", what)
 end
 
 function skynet.task(ret)

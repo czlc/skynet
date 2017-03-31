@@ -1,13 +1,24 @@
 local skynet = require "skynet"
 
--- 函数功能：加载name指定的snax service脚本，并将脚本中的接口按规则放到func中并返回
--- func[id] = {id, group, fname, function}
--- 其中group可以是"accept"、"response"、"system"
--- 包括全局函数init, exit, hotfix、accept.xxx、response.xxx
--- 其余全局函数加载到G下面
+local function dft_loader(path, name, G)
+    local errlist = {}
+
+    for pat in string.gmatch(path,"[^;]+") do
+        local filename = string.gsub(pat, "?", name)
+        local f , err = loadfile(filename, "bt", G)
+        if f then
+            return f, pat
+        else
+            table.insert(errlist, err)
+        end
+    end
+
+    error(table.concat(errlist, "\n"))
+end
+
 return function (name , G, loader)
-	loader = loader or loadfile
-	local mainfunc
+       loader = loader or dft_loader
+       local mainfunc
 
 	-- 返回一个table，向这个table添加函数的时候会将加入的函数转而
 	-- 添加进传入的func 表
@@ -26,7 +37,6 @@ return function (name , G, loader)
 			tmp[name] = true
 			table.insert(id, { #id + 1, group, name, func} )
 		end
-		-- 
 		return setmetatable({}, { __newindex = count })
 	end
 
@@ -44,7 +54,7 @@ return function (name , G, loader)
 	local env = setmetatable({} , { __index = temp_global })
 	local func = {}	-- 所有的函数都将加入其中
 
-	local system = { "init", "exit", "hotfix" }
+	local system = { "init", "exit", "hotfix", "profile"}
 
 	do
 		for k, v in ipairs(system) do
@@ -66,7 +76,6 @@ return function (name , G, loader)
 			if type(f) ~= "function" then
 				error (string.format("%s must be a function", name))
 			end
-
 			func[index][4] = f	-- [1] id, [2] group, [3] name, [4] f。前面3个之前都已经设置了
 		else
 			temp_global[name] = f -- 不属于系统函数，不加到func中来
@@ -75,31 +84,11 @@ return function (name , G, loader)
 
 	local pattern
 
-	do
-		-- snax 服务搜索地址
-		local path = assert(skynet.getenv "snax" , "please set snax in config file")
-
-		local errlist = {}
-
-		for pat in string.gmatch(path,"[^;]+") do
-			local filename = string.gsub(pat, "?", name)
-			local f , err = loader(filename, "bt", G)	-- 只是load还没有执行
-			if f then
-				pattern = pat
-				mainfunc = f
-				break
-			else
-				table.insert(errlist, err)
-			end
-		end
-
-		if mainfunc == nil then
-			error(table.concat(errlist, "\n"))
-		end
-	end
+        local path = assert(skynet.getenv "snax" , "please set snax in config file")
+        mainfunc, pattern = loader(path, name, G)
 
 	setmetatable(G,	{ __index = env , __newindex = init_system })
-	local ok, err = pcall(mainfunc)	-- 这个时候之前load设置的__newindex，包括system和response、accept都会生效
+	local ok, err = xpcall(mainfunc, debug.traceback)	-- 这个时候之前load设置的__newindex，包括system和response、accept都会生效
 	setmetatable(G, nil) -- 和env，_newindex断开关系，因为__newindex调用过后，东西都放到func中去了
 	assert(ok,err)
 

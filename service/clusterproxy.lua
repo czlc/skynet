@@ -27,6 +27,10 @@ skynet.forward_type( forward_map ,function()
 	-- 对于system类型的消息转发,由clusterd负责删除(默认不是forward callback都会自动删除)
 	-- rawcall会挂起来等待回应，RESPONSE消息到来以后还需要保留以便之后返回给发送"system"的请求者，所以don't free response message
 	skynet.dispatch("system", function (session, source, msg, sz)
-		skynet.ret(skynet.rawcall(clusterd, "lua", skynet.pack("req", node, address, msg, sz)))	-- 转发不用打包，调用者已经打包
+		if session == 0 then
+			skynet.send(clusterd, "lua", "push", node, address, msg, sz)
+		else
+			skynet.ret(skynet.rawcall(clusterd, "lua", skynet.pack("req", node, address, msg, sz)))
+		end
 	end)
 end)

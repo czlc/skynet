@@ -2,6 +2,8 @@
 	modify from https://github.com/cloudwu/lua-serialize
  */
 
+#define LUA_LIB
+
 #include "skynet_malloc.h"
 
 #include <lua.h>
@@ -603,7 +605,7 @@ luaseri_unpack(lua_State *L) {
 }
 
 // 把栈上参数读进来序列化成一个buffer，并将其作为lightuserdata压入(-2)，另外还压入其size(-1)
-int
+LUAMOD_API int
 luaseri_pack(lua_State *L) {
 	struct block temp;	// 开在 stack 上,可以节省一次内存分配释放操作
 	temp.next = NULL;

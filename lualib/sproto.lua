@@ -236,7 +236,6 @@ function host:dispatch(...)
 		end
 	else
 		-- response
-		-- 收到对方应答
 		local session = assert(header_tmp.session, "session not found")
 		local response = assert(self.__session[session], "Unknown session")
 		self.__session[session] = nil
@@ -263,7 +262,7 @@ function host:attach(sp)
 			self.__session[session] = proto.response or true
 		end
 
-		if args then
+		if proto.request then
 			local content = core.encode(proto.request, args) -- 编码协议内容
 			return core.pack(header ..  content) -- 打包整个协议数据
 		else

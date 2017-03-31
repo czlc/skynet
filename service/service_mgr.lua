@@ -154,7 +154,6 @@ local function register_global()
 end
 
 local function register_local()
-
 	local function waitfor_remote(cmd, name, ...)
 		local global_name = "@" .. name
 		local local_name

@@ -1,4 +1,5 @@
-/* 和lua-netpack不同，它并没有分包，而是到了一个网络包无论大小就先存下来，取得时候需要指定大小或者根据分隔符 */
+#define LUA_LIB
+
 #include "skynet_malloc.h"
 
 #include <stdlib.h>
@@ -712,7 +713,7 @@ ludp_address(lua_State *L) {
 	return 2;
 }
 
-int
+LUAMOD_API int
 luaopen_socketdriver(lua_State *L) {
 	luaL_checkversion(L);
 	luaL_Reg l[] = {

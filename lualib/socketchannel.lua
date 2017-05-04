@@ -161,7 +161,7 @@ local function dispatch_by_order(self)
 		local func, co = pop_response(self)
 		if not co then
 			-- close signal
-			wakeup_all(self, errmsg)
+			wakeup_all(self, "channel_closed")
 			break
 		end
 		local ok, result_ok, result_data, padding = pcall(func, self.__sock)	-- 阻塞读取结果，padding 表明还有后续数据
@@ -387,10 +387,15 @@ end
 local socket_write = socket.write
 local socket_lwrite = socket.lwrite
 
+local function sock_err(self)
+	close_channel_socket(self)
+	wakeup_all(self)
+	error(socket_error)
+end
+
 -- request 为请求内容
 -- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
 --			对于session类型来说是session，根据session来找到原请求
-
 -- 阻塞函数，但是可以在不同的协程同时调用
 function channel:request(request, response, padding)
 	assert(block_connect(self, true))	-- connect once
@@ -399,16 +404,18 @@ function channel:request(request, response, padding)
 	if padding then
 		-- padding may be a table, to support multi part request
 		-- multi part request use low priority socket write
-		-- socket_lwrite returns nothing
-		socket_lwrite(fd , request)
+		-- now socket_lwrite returns as socket_write
+		if not socket_lwrite(fd , request) then
+			sock_err(self)
+		end
 		for _,v in ipairs(padding) do
-			socket_lwrite(fd, v)
+			if not socket_lwrite(fd, v) then
+				sock_err(self)
+			end
 		end
 	else
 		if not socket_write(fd , request) then
-			close_channel_socket(self)
-			wakeup_all(self)
-			error(socket_error)
+			sock_err(self)
 		end
 	end
 

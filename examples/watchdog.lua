@@ -1,7 +1,6 @@
 -- 相当于是agent的manager
 -- 当打开一个gate，gate收到的消息会转发给的目标服务统称watchdog，比如clusterd就是一只
 local skynet = require "skynet"
-local netpack = require "netpack"
 
 local CMD = {}
 local SOCKET = {}

@@ -26,7 +26,7 @@ void skynet_socket_free();	// 释放socket资源
 int skynet_socket_poll();	// breath
 
 int skynet_socket_send(struct skynet_context *ctx, int id, void *buffer, int sz);
-void skynet_socket_send_lowpriority(struct skynet_context *ctx, int id, void *buffer, int sz);
+int skynet_socket_send_lowpriority(struct skynet_context *ctx, int id, void *buffer, int sz);
 int skynet_socket_listen(struct skynet_context *ctx, const char *host, int port, int backlog);
 /* 主动连接host:port */
 int skynet_socket_connect(struct skynet_context *ctx, const char *host, int port);

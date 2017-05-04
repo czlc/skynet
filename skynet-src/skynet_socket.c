@@ -91,7 +91,7 @@ skynet_socket_poll() {
 	case SOCKET_OPEN:
 		forward_message(SKYNET_SOCKET_TYPE_CONNECT, true, &result);
 		break;
-	case SOCKET_ERROR:
+	case SOCKET_ERR:
 		forward_message(SKYNET_SOCKET_TYPE_ERROR, true, &result);
 		break;
 	case SOCKET_ACCEPT:
@@ -99,6 +99,9 @@ skynet_socket_poll() {
 		break;
 	case SOCKET_UDP:
 		forward_message(SKYNET_SOCKET_TYPE_UDP, false, &result);
+		break;
+	case SOCKET_WARNING:
+		forward_message(SKYNET_SOCKET_TYPE_WARNING, false, &result);
 		break;
 	default:
 		skynet_error(NULL, "Unknown socket message type %d.",type);
@@ -110,31 +113,14 @@ skynet_socket_poll() {
 	return 1;
 }
 
-static int
-check_wsz(struct skynet_context *ctx, int id, void *buffer, int64_t wsz) {
-	if (wsz < 0) {
-		return -1;
-	} else if (wsz > 1024 * 1024) {
-		struct skynet_socket_message tmp;
-		tmp.type = SKYNET_SOCKET_TYPE_WARNING;
-		tmp.id = id;
-		tmp.ud = (int)(wsz / 1024);
-		tmp.buffer = NULL;
-		skynet_send(ctx, 0, skynet_context_handle(ctx), PTYPE_SOCKET, 0 , &tmp, sizeof(tmp));
-//		skynet_error(ctx, "%d Mb bytes on socket %d need to send out", (int)(wsz / (1024 * 1024)), id);
-	}
-	return 0;
+int
+skynet_socket_send(struct skynet_context *ctx, int id, void *buffer, int sz) {
+	return socket_server_send(SOCKET_SERVER, id, buffer, sz);
 }
 
 int
-skynet_socket_send(struct skynet_context *ctx, int id, void *buffer, int sz) {
-	int64_t wsz = socket_server_send(SOCKET_SERVER, id, buffer, sz);
-	return check_wsz(ctx, id, buffer, wsz);
-}
-
-void
 skynet_socket_send_lowpriority(struct skynet_context *ctx, int id, void *buffer, int sz) {
-	socket_server_send_lowpriority(SOCKET_SERVER, id, buffer, sz);
+	return socket_server_send_lowpriority(SOCKET_SERVER, id, buffer, sz);
 }
 
 int 
@@ -191,8 +177,7 @@ skynet_socket_udp_connect(struct skynet_context *ctx, int id, const char * addr,
 
 int 
 skynet_socket_udp_send(struct skynet_context *ctx, int id, const char * address, const void *buffer, int sz) {
-	int64_t wsz = socket_server_udp_send(SOCKET_SERVER, id, (const struct socket_udp_address *)address, buffer, sz);
-	return check_wsz(ctx, id, (void *)buffer, wsz);
+	return socket_server_udp_send(SOCKET_SERVER, id, (const struct socket_udp_address *)address, buffer, sz);
 }
 
 /* 返回addr string, addrsz是其大小 */

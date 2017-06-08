@@ -1,7 +1,7 @@
 -- 代理服务，本来是直接发给clusterd并且带node和address的，通过这个代理，调用者
 -- 不用关心node和address，也对clusterd也不用关心，就像访问本地服务一样
 local skynet = require "skynet"
-local cluster = require "cluster"
+local cluster = require "skynet.cluster"
 require "skynet.manager"	-- inject skynet.forward_type
 
 local node, address = ...

@@ -4,7 +4,7 @@
 -- 消息转发
 local skynet = require "skynet"
 local gateserver = require "snax.gateserver"
-local netpack = require "netpack"
+local netpack = require "skynet.netpack"
 
 local watchdog
 local connection = {}	-- fd -> connection : { fd , client, agent , ip, mode }，主要用于向agent转发消息，而无需通过watchdog

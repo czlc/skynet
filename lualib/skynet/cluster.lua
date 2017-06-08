@@ -32,7 +32,7 @@ function cluster.proxy(node, name)
 end
 
 function cluster.snax(node, name, address)
-	local snax = require "snax"
+	local snax = require "skynet.snax"
 	if not address then
 		address = cluster.call(node, ".service", "QUERY", "snaxd" , name)
 	end

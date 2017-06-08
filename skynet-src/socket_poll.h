@@ -9,6 +9,7 @@ struct event {
 	void * s;	// socket 对象，sp_add添加，ctrl命令的s为NULL
 	bool read;	// socket 可读
 	bool write; // socket 可写
+	bool error;
 };
 
 static bool sp_invalid(poll_fd fd);

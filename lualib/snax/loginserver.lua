@@ -1,8 +1,8 @@
 -- loginserver是一个框架模板(也可以理解为service的基类，具体的处理函数由login传入的参数处理)，一些具体的逻辑实现在login(conf)中的conf中
 local skynet = require "skynet"
 require "skynet.manager"
-local socket = require "socket"
-local crypt = require "crypt"
+local socket = require "skynet.socket"
+local crypt = require "skynet.crypt"
 local table = table
 local string = string
 local assert = assert

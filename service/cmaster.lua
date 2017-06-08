@@ -1,6 +1,6 @@
 -- 组网工作由cmaster和cslave完成
 local skynet = require "skynet"
-local socket = require "socket"
+local socket = require "skynet.socket"
 
 --[[
 	master manage data :

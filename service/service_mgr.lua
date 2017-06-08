@@ -1,6 +1,6 @@
 local skynet = require "skynet"
 require "skynet.manager"	-- import skynet.register
-local snax = require "snax"
+local snax = require "skynet.snax"
 
 local cmd = {}
 local service = {}	-- 启动之前：[service_name] = {launch = true, co1, co2, ...}，等待查询和启动的协程列表

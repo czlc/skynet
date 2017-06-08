@@ -3,8 +3,8 @@
 -- 它主要做了分包(netpack)处理，把数据流切割成包的形式转发到可以处理它的地址
 -- 封装了网络层
 local skynet = require "skynet"
-local netpack = require "netpack"
-local socketdriver = require "socketdriver"
+local netpack = require "skynet.netpack"
+local socketdriver = require "skynet.socketdriver"
 
 local gateserver = {}
 

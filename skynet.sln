@@ -1,10 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{73DE69EE-221B-4717-973A-0F734E113CF0}"
 	ProjectSection(SolutionItems) = preProject
 		examples\abort.lua = examples\abort.lua
 		examples\agent.lua = examples\agent.lua
+		examples\checkdeadloop.lua = examples\checkdeadloop.lua
 		examples\client.lua = examples\client.lua
 		examples\cluster1.lua = examples\cluster1.lua
 		examples\cluster2.lua = examples\cluster2.lua
@@ -15,6 +18,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{73
 		examples\config.login = examples\config.login
 		examples\config.mc = examples\config.mc
 		examples\config.mysql = examples\config.mysql
+		examples\config.path = examples\config.path
 		examples\config.userlog = examples\config.userlog
 		examples\config_log = examples\config_log
 		examples\globallog.lua = examples\globallog.lua
@@ -35,21 +39,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{73
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib", "lualib", "{4458D408-D921-4D64-ADA4-EBA4E7C6D245}"
 	ProjectSection(SolutionItems) = preProject
-		lualib\cluster.lua = lualib\cluster.lua
-		lualib\datacenter.lua = lualib\datacenter.lua
-		lualib\dns.lua = lualib\dns.lua
 		lualib\loader.lua = lualib\loader.lua
 		lualib\md5.lua = lualib\md5.lua
-		lualib\mongo.lua = lualib\mongo.lua
-		lualib\multicast.lua = lualib\multicast.lua
-		lualib\mysql.lua = lualib\mysql.lua
-		lualib\redis.lua = lualib\redis.lua
-		lualib\sharedata.lua = lualib\sharedata.lua
-		lualib\sharemap.lua = lualib\sharemap.lua
 		lualib\skynet.lua = lualib\skynet.lua
-		lualib\snax.lua = lualib\snax.lua
-		lualib\socket.lua = lualib\socket.lua
-		lualib\socketchannel.lua = lualib\socketchannel.lua
 		lualib\sproto.lua = lualib\sproto.lua
 		lualib\sprotoloader.lua = lualib\sprotoloader.lua
 		lualib\sprotoparser.lua = lualib\sprotoparser.lua
@@ -62,6 +54,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lualib-src", "lualib-src", 
 		lualib-src\lua-clientsocket.c = lualib-src\lua-clientsocket.c
 		lualib-src\lua-cluster.c = lualib-src\lua-cluster.c
 		lualib-src\lua-crypt.c = lualib-src\lua-crypt.c
+		lualib-src\lua-datasheet.c = lualib-src\lua-datasheet.c
 		lualib-src\lua-debugchannel.c = lualib-src\lua-debugchannel.c
 		lualib-src\lua-memory.c = lualib-src\lua-memory.c
 		lualib-src\lua-mongo.c = lualib-src\lua-mongo.c
@@ -94,13 +87,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service", "service", "{15E5
 		service\gate.lua = service\gate.lua
 		service\launcher.lua = service\launcher.lua
 		service\multicastd.lua = service\multicastd.lua
+		service\service_cell.lua = service\service_cell.lua
 		service\service_mgr.lua = service\service_mgr.lua
+		service\service_provider.lua = service\service_provider.lua
 		service\sharedatad.lua = service\sharedatad.lua
 		service\snaxd.lua = service\snaxd.lua
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "service-src", "service-src", "{231CCE9A-E800-4223-B272-DA7C433548D9}"
 	ProjectSection(SolutionItems) = preProject
+		service-src\databuffer.h = service-src\databuffer.h
+		service-src\hashid.h = service-src\hashid.h
+		service-src\service_gate.c = service-src\service_gate.c
 		service-src\service_harbor.c = service-src\service_harbor.c
 		service-src\service_logger.c = service-src\service_logger.c
 		service-src\service_snlua.c = service-src\service_snlua.c
@@ -153,14 +151,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{574844D0-D
 	ProjectSection(SolutionItems) = preProject
 		test\pingserver.lua = test\pingserver.lua
 		test\sharemap.sp = test\sharemap.sp
+		test\testbson.lua = test\testbson.lua
 		test\testcoroutine.lua = test\testcoroutine.lua
 		test\testdatacenter.lua = test\testdatacenter.lua
+		test\testdatasheet.lua = test\testdatasheet.lua
 		test\testdeadcall.lua = test\testdeadcall.lua
 		test\testdeadloop.lua = test\testdeadloop.lua
 		test\testdns.lua = test\testdns.lua
 		test\testecho.lua = test\testecho.lua
+		test\testendless.lua = test\testendless.lua
 		test\testharborlink.lua = test\testharborlink.lua
 		test\testhttp.lua = test\testhttp.lua
+		test\testmemlimit.lua = test\testmemlimit.lua
 		test\testmongodb.lua = test\testmongodb.lua
 		test\testmulticast.lua = test\testmulticast.lua
 		test\testmulticast2.lua = test\testmulticast2.lua
@@ -171,6 +173,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{574844D0-D
 		test\testqueue.lua = test\testqueue.lua
 		test\testredis.lua = test\testredis.lua
 		test\testredis2.lua = test\testredis2.lua
+		test\testrediscluster.lua = test\testrediscluster.lua
 		test\testresponse.lua = test\testresponse.lua
 		test\testsha.lua = test\testsha.lua
 		test\testsm.lua = test\testsm.lua
@@ -189,41 +192,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "login", "login", "{AB140B96
 		examples\login\logind.lua = examples\login\logind.lua
 		examples\login\main.lua = examples\login\main.lua
 		examples\login\msgagent.lua = examples\login\msgagent.lua
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "http", "http", "{951E79C7-FBAC-49AD-95C9-3B92A76866F4}"
-	ProjectSection(SolutionItems) = preProject
-		lualib\http\httpc.lua = lualib\http\httpc.lua
-		lualib\http\httpd.lua = lualib\http\httpd.lua
-		lualib\http\internal.lua = lualib\http\internal.lua
-		lualib\http\sockethelper.lua = lualib\http\sockethelper.lua
-		lualib\http\url.lua = lualib\http\url.lua
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sharedata", "sharedata", "{918918D0-34F9-4653-88A8-23DDBD462F6D}"
-	ProjectSection(SolutionItems) = preProject
-		lualib\sharedata\corelib.lua = lualib\sharedata\corelib.lua
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "skynet", "skynet", "{A7E1BCB9-DF95-4B17-8D85-8F3696BB1558}"
-	ProjectSection(SolutionItems) = preProject
-		lualib\skynet\coroutine.lua = lualib\skynet\coroutine.lua
-		lualib\skynet\debug.lua = lualib\skynet\debug.lua
-		lualib\skynet\harbor.lua = lualib\skynet\harbor.lua
-		lualib\skynet\inject.lua = lualib\skynet\inject.lua
-		lualib\skynet\injectcode.lua = lualib\skynet\injectcode.lua
-		lualib\skynet\manager.lua = lualib\skynet\manager.lua
-		lualib\skynet\queue.lua = lualib\skynet\queue.lua
-		lualib\skynet\remotedebug.lua = lualib\skynet\remotedebug.lua
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "snax", "snax", "{380F61C7-B540-4455-9DAB-F6EBC33B3758}"
-	ProjectSection(SolutionItems) = preProject
-		lualib\snax\gateserver.lua = lualib\snax\gateserver.lua
-		lualib\snax\hotfix.lua = lualib\snax\hotfix.lua
-		lualib\snax\interface.lua = lualib\snax\interface.lua
-		lualib\snax\loginserver.lua = lualib\snax\loginserver.lua
-		lualib\snax\msgserver.lua = lualib\snax\msgserver.lua
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sproto", "sproto", "{9F499D04-3A32-4E8E-9023-6B91287F828B}"
@@ -343,19 +311,120 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "mk", "mk", "{1E635936-13A2-
 		platform.mk = platform.mk
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "compat10", "compat10", "{4FFC3E15-CE11-4C48-A1DB-40D157FB1538}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\compat10\cluster.lua = lualib\compat10\cluster.lua
+		lualib\compat10\crypt.lua = lualib\compat10\crypt.lua
+		lualib\compat10\datacenter.lua = lualib\compat10\datacenter.lua
+		lualib\compat10\dns.lua = lualib\compat10\dns.lua
+		lualib\compat10\memory.lua = lualib\compat10\memory.lua
+		lualib\compat10\mongo.lua = lualib\compat10\mongo.lua
+		lualib\compat10\mqueue.lua = lualib\compat10\mqueue.lua
+		lualib\compat10\multicast.lua = lualib\compat10\multicast.lua
+		lualib\compat10\mysql.lua = lualib\compat10\mysql.lua
+		lualib\compat10\netpack.lua = lualib\compat10\netpack.lua
+		lualib\compat10\profile.lua = lualib\compat10\profile.lua
+		lualib\compat10\redis.lua = lualib\compat10\redis.lua
+		lualib\compat10\sharedata.lua = lualib\compat10\sharedata.lua
+		lualib\compat10\sharemap.lua = lualib\compat10\sharemap.lua
+		lualib\compat10\snax.lua = lualib\compat10\snax.lua
+		lualib\compat10\socket.lua = lualib\compat10\socket.lua
+		lualib\compat10\socketchannel.lua = lualib\compat10\socketchannel.lua
+		lualib\compat10\socketdriver.lua = lualib\compat10\socketdriver.lua
+		lualib\compat10\stm.lua = lualib\compat10\stm.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "http", "http", "{2330E4B9-8A14-40C7-BDCA-71BE73974B29}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\http\httpc.lua = lualib\http\httpc.lua
+		lualib\http\httpd.lua = lualib\http\httpd.lua
+		lualib\http\internal.lua = lualib\http\internal.lua
+		lualib\http\sockethelper.lua = lualib\http\sockethelper.lua
+		lualib\http\url.lua = lualib\http\url.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "skynet", "skynet", "{BC9A4B7C-02E8-497C-A4FE-D303AC154F4B}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\cluster.lua = lualib\skynet\cluster.lua
+		lualib\skynet\coroutine.lua = lualib\skynet\coroutine.lua
+		lualib\skynet\datacenter.lua = lualib\skynet\datacenter.lua
+		lualib\skynet\debug.lua = lualib\skynet\debug.lua
+		lualib\skynet\dns.lua = lualib\skynet\dns.lua
+		lualib\skynet\harbor.lua = lualib\skynet\harbor.lua
+		lualib\skynet\inject.lua = lualib\skynet\inject.lua
+		lualib\skynet\injectcode.lua = lualib\skynet\injectcode.lua
+		lualib\skynet\manager.lua = lualib\skynet\manager.lua
+		lualib\skynet\mqueue.lua = lualib\skynet\mqueue.lua
+		lualib\skynet\multicast.lua = lualib\skynet\multicast.lua
+		lualib\skynet\queue.lua = lualib\skynet\queue.lua
+		lualib\skynet\reload.lua = lualib\skynet\reload.lua
+		lualib\skynet\remotedebug.lua = lualib\skynet\remotedebug.lua
+		lualib\skynet\service.lua = lualib\skynet\service.lua
+		lualib\skynet\sharedata.lua = lualib\skynet\sharedata.lua
+		lualib\skynet\sharemap.lua = lualib\skynet\sharemap.lua
+		lualib\skynet\snax.lua = lualib\skynet\snax.lua
+		lualib\skynet\socket.lua = lualib\skynet\socket.lua
+		lualib\skynet\socketchannel.lua = lualib\skynet\socketchannel.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "datasheet", "datasheet", "{9AD94EE7-A64B-4CEF-9E3B-8B58A2823058}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\datasheet\builder.lua = lualib\skynet\datasheet\builder.lua
+		lualib\skynet\datasheet\dump.lua = lualib\skynet\datasheet\dump.lua
+		lualib\skynet\datasheet\init.lua = lualib\skynet\datasheet\init.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "db", "db", "{F679846D-501E-449D-8BF8-0C2C18E2613C}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\db\mongo.lua = lualib\skynet\db\mongo.lua
+		lualib\skynet\db\mysql.lua = lualib\skynet\db\mysql.lua
+		lualib\skynet\db\redis.lua = lualib\skynet\db\redis.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sharedata", "sharedata", "{62405D20-BFA4-4828-B77E-45FFF31163A1}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\sharedata\corelib.lua = lualib\skynet\sharedata\corelib.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "redis", "redis", "{426C5911-111D-4B51-84AF-F5AA31133762}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\skynet\db\redis\cluster.lua = lualib\skynet\db\redis\cluster.lua
+		lualib\skynet\db\redis\crc16.lua = lualib\skynet\db\redis\crc16.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "snax", "snax", "{097AC658-07D3-4622-9C01-322A8560A605}"
+	ProjectSection(SolutionItems) = preProject
+		lualib\snax\gateserver.lua = lualib\snax\gateserver.lua
+		lualib\snax\hotfix.lua = lualib\snax\hotfix.lua
+		lualib\snax\interface.lua = lualib\snax\interface.lua
+		lualib\snax\loginserver.lua = lualib\snax\loginserver.lua
+		lualib\snax\msgserver.lua = lualib\snax\msgserver.lua
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testservice", "testservice", "{1459B85C-6414-4A3C-8848-6D0B1E1628B6}"
+	ProjectSection(SolutionItems) = preProject
+		test\testservice\init.lua = test\testservice\init.lua
+		test\testservice\kvdb.lua = test\testservice\kvdb.lua
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{AB140B96-BDD5-40B4-BC17-19286EFF4D7F} = {73DE69EE-221B-4717-973A-0F734E113CF0}
-		{951E79C7-FBAC-49AD-95C9-3B92A76866F4} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
-		{918918D0-34F9-4653-88A8-23DDBD462F6D} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
-		{A7E1BCB9-DF95-4B17-8D85-8F3696BB1558} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
-		{380F61C7-B540-4455-9DAB-F6EBC33B3758} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
 		{9F499D04-3A32-4E8E-9023-6B91287F828B} = {92C55FB9-0DD3-4DE0-81AC-BF0A117942AF}
 		{C067BE5F-ABD3-40D2-B3C1-75CA8FEF751E} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
 		{786AC8F8-9371-4C81-9859-B092D87EEFB3} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
 		{383E12A6-E797-4895-9604-F5BCA014D8F0} = {48189DD2-976E-41E3-870F-EFA871E4A4C6}
+		{4FFC3E15-CE11-4C48-A1DB-40D157FB1538} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{2330E4B9-8A14-40C7-BDCA-71BE73974B29} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{BC9A4B7C-02E8-497C-A4FE-D303AC154F4B} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{9AD94EE7-A64B-4CEF-9E3B-8B58A2823058} = {BC9A4B7C-02E8-497C-A4FE-D303AC154F4B}
+		{F679846D-501E-449D-8BF8-0C2C18E2613C} = {BC9A4B7C-02E8-497C-A4FE-D303AC154F4B}
+		{62405D20-BFA4-4828-B77E-45FFF31163A1} = {BC9A4B7C-02E8-497C-A4FE-D303AC154F4B}
+		{426C5911-111D-4B51-84AF-F5AA31133762} = {F679846D-501E-449D-8BF8-0C2C18E2613C}
+		{097AC658-07D3-4622-9C01-322A8560A605} = {4458D408-D921-4D64-ADA4-EBA4E7C6D245}
+		{1459B85C-6414-4A3C-8848-6D0B1E1628B6} = {574844D0-D5EB-43B2-AE7E-B75D3D0AC184}
 	EndGlobalSection
 EndGlobal

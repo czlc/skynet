@@ -66,7 +66,8 @@ print("sceret is ", crypt.hexencode(secret))
 
 -- Protocol:6. Client->Server : base64(HMAC(challenge, secret)) 验证secret 双方是否一致
 local hmac = crypt.hmac64(challenge, secret)
-writeline(fd, crypt.base64encode(hmac)) -- login step 3:C 和 L 交换后续通讯用的密钥 secret ，并立刻验证。
+-- login step 3:C 和 L 交换后续通讯用的密钥 secret ，并立刻验证。
+writeline(fd, crypt.base64encode(hmac))
 
 -- login step 1: C 向 A 发起一次认证请求 (A 通常是第三方认证平台)，获得一个 token 。这个 token 里通常包含有用户名称以及用于校验用户合法性的其它信息。
 local token = {
@@ -85,7 +86,8 @@ end
 -- Protocl:7. Client->Server : DES(secret, base64(token))
 local etoken = crypt.desencode(secret, encode_token(token))
 local b = crypt.base64encode(etoken)
-writeline(fd, crypt.base64encode(etoken)) -- login step 2:C 将他希望登陆的登陆点 G1 (或其它登陆点，可由系统设计的负载均衡器来选择）以及 step 1 获得的 token 一起发送给 L 。
+-- login step 2:C 将他希望登陆的登陆点 G1 (或其它登陆点，可由系统设计的负载均衡器来选择）以及 step 1 获得的 token 一起发送给 L 。
+writeline(fd, crypt.base64encode(etoken))
 
 local result = readline()
 print(result)

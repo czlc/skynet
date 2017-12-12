@@ -1,6 +1,7 @@
 -- 组网工作由cmaster和cslave完成
 local skynet = require "skynet"
 local socket = require "skynet.socket"
+local socketdriver = require "skynet.socketdriver"
 require "skynet.manager"	-- import skynet.launch, ...
 local table = table
 
@@ -44,6 +45,7 @@ local function connect_slave(slave_id, address)
 	local ok, err = pcall(function()
 		if slaves[slave_id] == nil then
 			local fd = assert(socket.open(address), "Can't connect to "..address)
+			socketdriver.nodelay(fd)
 			skynet.error(string.format("Connect to harbor %d (fd=%d), %s", slave_id, fd, address))
 			slaves[slave_id] = fd
 			-- 转移socket操作到harbor服务
@@ -270,6 +272,7 @@ skynet.start(function()
 		local co = coroutine.running()
 		socket.start(slave_fd, function(fd, addr)
 			skynet.error(string.format("New connection (fd = %d, %s)",fd, addr))
+			socketdriver.nodelay(fd)
 			if pcall(accept_slave,fd) then
 				local s = 0
 				for k,v in pairs(slaves) do
@@ -281,8 +284,11 @@ skynet.start(function()
 			end
 		end)
 		skynet.wait()
+		socket.close(slave_fd)
+	else
+		-- slave_fd does not start, so use close_fd.
+		socket.close_fd(slave_fd)
 	end
-	socket.close(slave_fd)	-- 关闭监听端口，如果再有新节点加入网络，老节点主动去连接新节点
 	skynet.error("Shakehand ready")
 	skynet.fork(ready)
 end)

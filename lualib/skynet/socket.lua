@@ -232,21 +232,13 @@ function socket.start(id, func)
 	return connect(id, func)
 end
 
-local function close_fd(id, func)
+function socket.shutdown(id)
 	local s = socket_pool[id]
 	if s then
-		if s.buffer then
-			driver.clear(s.buffer,buffer_pool)
-		end
-		if s.connected then
-			func(id)
-		end
+		driver.clear(s.buffer,buffer_pool)
+		-- the framework would send SKYNET_SOCKET_TYPE_CLOSE , need close(id) later
+		driver.shutdown(id)
 	end
-end
-
---  强行关闭一个连接。和 close 不同的是，它不会等待可能存在的其它 coroutine 的读操作
-function socket.shutdown(id)
-	close_fd(id, driver.shutdown)
 end
 
 function socket.close_fd(id)
@@ -278,7 +270,7 @@ function socket.close(id)
 		end
 		s.connected = false	-- 实际上driver.close会通知一个close事件，在处理close事件的时候已经设置了false
 	end
-	close_fd(id)	-- clear the buffer (already close fd)
+	driver.clear(s.buffer,buffer_pool)
 	assert(s.lock == nil or next(s.lock) == nil)
 	socket_pool[id] = nil
 end
@@ -394,6 +386,13 @@ function socket.invalid(id)
 	return socket_pool[id] == nil
 end
 
+function socket.disconnected(id)
+	local s = socket_pool[id]
+	if s then
+		return not(s.connected or s.connecting)
+	end
+end
+
 -- 类型：[S] 立即函数
 -- 描述：监听指定地址和端口，返回后socket处于plisten状态，需要调用socket.start之后才能accept客户端连接
 -- 返回：监听socket id
@@ -440,10 +439,12 @@ end
 -- 这可以用于你把 id 发送给其它服务，以转交 socket 的控制权
 function socket.abandon(id)
 	local s = socket_pool[id]
-	if s and s.buffer then
+	if s then
 		driver.clear(s.buffer,buffer_pool)
+		s.connected = false
+		wakeup(s)
+		socket_pool[id] = nil
 	end
-	socket_pool[id] = nil
 end
 
 -- 设置接收缓冲的大小，如果超出会断开连接

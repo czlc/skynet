@@ -119,14 +119,6 @@ function snax.newservice(name, ...)
 	return snax.bind(handle, name)
 end
 
-local function service_name(global, name, ...)
-	if global == true then
-		return name
-	else
-		return global
-	end
-end
-
 function snax.uniqueservice(name, ...)
 	local handle = assert(skynet.call(".service", "lua", "LAUNCH", "snaxd", name, ...))
 	-- 此handle是snaxd的handle，而不是name对应service的handle

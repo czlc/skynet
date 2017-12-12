@@ -65,8 +65,11 @@ function skynet.forward_type(map, start_func)
 			dispatch_message(prototype, msg, sz, ...)
 			-- 需要转发，见clusterproxy最下面skynet.pack("req", node, address, msg, sz)，所以就不需要删除
 		else
-			dispatch_message(ptype, msg, sz, ...)
+			local ok, err = pcall(dispatch_message, ptype, msg, sz, ...)
 			c.trash(msg, sz)
+			if not ok then
+				error(err)
+			end
 		end
 	end, true)	-- true 表示forward
 	skynet.timeout(0, function()

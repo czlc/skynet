@@ -14,6 +14,7 @@ rwlock_init(struct rwlock *lock) {
 	lock->read = 0;
 }
 
+/* 加读锁 */
 static inline void
 rwlock_rlock(struct rwlock *lock) {
 	for (;;) {
@@ -21,13 +22,13 @@ rwlock_rlock(struct rwlock *lock) {
 			// 等待写结束
 			__sync_synchronize();
 		}
-		// 标记读
+		// 增加一个读者
 		__sync_add_and_fetch(&lock->read,1);
 		if (lock->write) {
 			// 如果有写瞬间插进来则取消读，重新试探
 			__sync_sub_and_fetch(&lock->read,1);
 		} else {
-			break;
+			break;	// 可以读了
 		}
 	}
 }

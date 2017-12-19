@@ -12,26 +12,28 @@
 #define ATOM_AND(ptr,n) __sync_and_and_fetch(ptr, n)
 
 /* 
-** acquire barrier:它保证本指令执行完之后才执行它之后的指令。但是有可能它之前的指令
+** acquire barrier:它保证本指令执行完之后才执行它之后的指令(后面的指令不会跑到它前面，保证本指令和后续指令的关系)。但是有可能它之前的指令
 ** 还没有被执行
 **
-** release barrier:它保证本指令执行的时候它之前的所有指令都已经执行完成。但是有可能
+** release barrier:它保证本指令执行的时候它之前的所有指令都已经执行完成(前面的指令不会落后与它，保证本指令和前面指令的关系)。但是有可能
 ** 它之后的指令先于它执行
 **
-** full barrier:Acquire + Release
+** full barrier:Acquire + Release，保证了本指令和前后指令的关系
 */
 
 /*
-比较ptr所指向的内容和oldvalue，如果相等，则将newval写入ptr所指向的位置，并返回true
-	bool __sync_bool_compare_and_swap (type *ptr, type oldval type newval, ...)
-
-比较ptr所指向的内容和oldvalue，如果相等，则将newval写入ptr所指向的位置，无论是否相等均返回修改之前的ptr指向的值
-	type __sync_val_compare_and_swap (type *ptr, type oldval type newval, ...)
+** 比较ptr所指向的内容和oldvalue，如果相等，则将newval写入ptr所指向的位置，并返回true
+** bool __sync_bool_compare_and_swap (type *ptr, type oldval type newval, ...)
+**
+** 比较ptr所指向的内容和oldvalue，如果相等，则将newval写入ptr所指向的位置，无论是否相等均返回修改之前的ptr指向的值
+** type __sync_val_compare_and_swap (type *ptr, type oldval type newval, ...)
 */
 
 
 /*
 	执行操作，并返回修改过后的值, full barrier
+	> { *ptr op= value; return *ptr; }
+	> { *ptr = ~*ptr & value; return *ptr; }   // nand
 
 	type __sync_add_and_fetch (type *ptr, type value, ...)
 	type __sync_sub_and_fetch (type *ptr, type value, ...)
@@ -42,7 +44,11 @@
 */
 
 /*
-	执行操作，并返回修改之前的值
+	执行操作，并返回修改之前的值, full barrier
+	> { tmp = *ptr; *ptr op= value; return tmp; }
+	> { tmp = *ptr; *ptr = ~tmp & value; return tmp; }   // nand
+
+
 	type __sync_fetch_and_add (type *ptr, type value, ...)
 	type __sync_fetch_and_sub (type *ptr, type value, ...)
 	type __sync_fetch_and_or (type *ptr, type value, ...)
@@ -71,7 +77,7 @@ This builtin issues a full memory barrier.
 ** but previous memory stores may not be globally visible yet, and previous memory loads
 ** may not yet be satisfied. 
 **
-**			type __sync_lock_test_and_set (type *ptr, type value, ...)
+** type __sync_lock_test_and_set (type *ptr, type value, ...)
 */
 
 

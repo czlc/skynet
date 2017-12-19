@@ -1,3 +1,4 @@
+/* 处理 socket 相关，不关心服务 */
 #ifndef skynet_socket_server_h
 #define skynet_socket_server_h
 

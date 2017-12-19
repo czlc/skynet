@@ -1,3 +1,4 @@
+/* 服务相关的网络模块 */
 #ifndef skynet_socket_h
 #define skynet_socket_h
 

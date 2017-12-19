@@ -1,4 +1,4 @@
-/* hook中通过实现malloc同名api来重载libc的实现，这在macos下行不通 */
+/* hook中通过实现malloc同名api来重写libc的实现，这在macos下行不通 */
 #ifndef skynet_malloc_h
 #define skynet_malloc_h
 

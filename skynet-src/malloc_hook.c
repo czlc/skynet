@@ -186,7 +186,7 @@ mallctl_opt(const char* name, int* newval) {
 }
 
 // hook : malloc, realloc, free, calloc
-// 实现 malloc 等同名 api 以重载 libc 对应 api 实现的
+// 实现 malloc 等同名 api 以重写 libc 对应 api 实现的
 void *
 skynet_malloc(size_t size) {
 	void* ptr = je_malloc(size + PREFIX_SIZE);

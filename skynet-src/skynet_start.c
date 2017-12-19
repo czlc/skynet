@@ -227,7 +227,7 @@ start(int thread) {
 	}
 
 	for (i=0;i<thread+3;i++) {
-		pthread_join(pid[i], NULL); 
+		pthread_join(pid[i], NULL);	// 等待所有线程结束
 	}
 
 	free_monitor(m);

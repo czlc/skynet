@@ -104,6 +104,10 @@ struct socket {
 	size_t dw_size;
 };
 
+/*
+** 所有网络请求，都通过把指令写到一个进程内的 pipe ，串行化到网络处理线程，依次处理，然后再
+** 把结果投递到 skynet 的其它服务中。
+*/
 struct socket_server {
 	int recvctrl_fd;					// 控制命令接收端
 	int sendctrl_fd;					// 控制命令发送端
@@ -344,7 +348,7 @@ socket_server_create() {
 		fprintf(stderr, "socket-server: create event pool failed.\n");
 		return NULL;
 	}
-	// 创建管道用于接收命令
+	// 创建管道用于接收命令, 单向的通信，fd[0]用于读, fd[1]用于写
 	if (pipe(fd)) {
 		sp_release(efd);
 		fprintf(stderr, "socket-server: create socket pair failed.\n");
@@ -377,7 +381,7 @@ socket_server_create() {
 	ss->event_index = 0;
 	memset(&ss->soi, 0, sizeof(ss->soi));
 	FD_ZERO(&ss->rfds);
-	assert(ss->recvctrl_fd < FD_SETSIZE);	// linux下是value，windows下是count http://bbs.chinaunix.net/thread-1791112-1-1.html
+	assert(ss->recvctrl_fd < FD_SETSIZE);	// select 的限制，linux下是value(1024)，windows下是count(64) http://bbs.chinaunix.net/thread-1791112-1-1.html
 
 	return ss;
 }
@@ -471,7 +475,7 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 
 	s->id = id;
 	s->fd = fd;
-	s->sending = ID_TAG16(id) << 16 | 0;
+	s->sending = ID_TAG16(id) << 16 | 0;	// TODO: | 0 有什么意义？
 	s->protocol = protocol;
 	s->p.size = MIN_READ_BUFFER;
 	s->opaque = opaque;	// 收消息的ctx handle
@@ -867,6 +871,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 		sp_write(ss->event_fd, s->fd, s, true); // 等待可写信号
 	} else {
 		if (s->protocol == PROTOCOL_TCP) {
+			// 如果发送缓冲不空，则会判断是否是低优先级发送
 			if (priority == PRIORITY_LOW) {
 				append_sendbuffer_low(ss, s, request);
 			} else {
@@ -1522,6 +1527,7 @@ add_sending_ref(struct socket *s, int id) {
 }
 
 // return -1 when error, 0 when success
+// 如果 sz < 0, buffer 是一个 ud，用于自己控制 buffer 生命期
 int 
 socket_server_send(struct socket_server *ss, int id, const void * buffer, int sz) {
 	struct socket * s = &ss->slot[HASH_ID(id)];
@@ -1533,6 +1539,7 @@ socket_server_send(struct socket_server *ss, int id, const void * buffer, int sz
 	struct socket_lock l;
 	socket_lock_init(s, &l);
 
+	// 写优化, 尝试在本线程中发送试试 https://blog.codingnow.com/2017/06/skynet_socket.html
 	if (can_direct_write(s,id) && socket_trylock(&l)) {
 		// may be we can send directly, double check
 		if (can_direct_write(s,id)) {

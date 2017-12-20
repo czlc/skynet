@@ -32,7 +32,7 @@ skynet_error(struct skynet_context * context, const char *msg, ...) {
 	if (len >=0 && len < LOG_MESSAGE_SIZE) {
 		data = skynet_strdup(tmp);
 	} else {
-		/* 消息长于LOG_MESSAGE_SIZE 也能够正确处理 */
+		/* 消息长于LOG_MESSAGE_SIZE 也能够正确处理，不确定字符串总得长度 */
 		int max_size = LOG_MESSAGE_SIZE;
 		for (;;) {
 			max_size *= 2;

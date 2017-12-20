@@ -9,8 +9,9 @@ struct skynet_message;
 struct skynet_monitor;
 
 struct skynet_context * skynet_context_new(const char * name, const char * parm);
-/* 增加引用计数 */
+/* 因为外界获得此 ctx 增加引用计数 */
 void skynet_context_grab(struct skynet_context *);
+/* 保留此context，使其不会被释放，非常特别 */
 void skynet_context_reserve(struct skynet_context *ctx);
 
 /* 基于引用计数的释放 */

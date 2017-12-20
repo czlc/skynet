@@ -56,7 +56,7 @@ skynet_globalmq_push(struct message_queue * queue) {
 
 	// 要求线程安全
 	SPIN_LOCK(q)
-	assert(queue->next == NULL);	// 必须是一个独立的队列
+	assert(queue->next == NULL);	// 必须是 Q 之外的队列
 	if(q->tail) {
 		q->tail->next = queue;
 		q->tail = queue;
@@ -202,7 +202,7 @@ expand_queue(struct message_queue *q) {
 	q->queue = new_queue;
 }
 
-/* 向某个服务的消息队列末尾压入一条消息，如果消息队列不在global queue，则将此队列压入进去 */
+/* 向某个服务的消息队列末尾压入一条消息，如果消息队列不在global queue，则将此队列压入进去，避免没有消息的时候也空转 */
 void 
 skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 	assert(message);

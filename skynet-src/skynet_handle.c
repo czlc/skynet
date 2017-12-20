@@ -158,7 +158,7 @@ skynet_handle_grab(uint32_t handle) {
 	return result;
 }
 
-// 根据一个结点内名字xxxxx找到相应的handle
+// 根据一个结点内名字xxxxx找到相应的handle，此时已经去掉了名字前面的'.'
 uint32_t 
 skynet_handle_findname(const char * name) {
 	struct handle_storage *s = H;
@@ -222,7 +222,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	while (begin<=end) {
 		int mid = (begin+end)/2;
 		struct handle_name *n = &s->name[mid];
-		int c = strcmp(n->name, name);
+		int c = strcmp(n->name, name);	// 名字重复
 		if (c==0) {
 			return NULL;
 		}

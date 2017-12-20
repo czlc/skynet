@@ -44,9 +44,9 @@ struct skynet_context {
 	void * instance;				// 服务的实例，比如snlua对象
 	struct skynet_module * mod;		// 服务所属于的模板，比如snlua类
 	void * cb_ud;					// 回调函数参数，它将作为回调函数的第二个参数，本ctx是第一个参数
-	skynet_cb cb;					// 服务的回调函数
+	skynet_cb cb;					// 消息处理函数
 	struct message_queue *queue;	// 本服务的消息队列
-	FILE * logfile;					// 服务的日志文件，在cmd_logon中被设置
+	FILE * logfile;					// 日志开关, 服务的日志文件，在cmd_logon中被设置
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
 	char result[32];				// 用于临时存cmd的返回字符串
@@ -206,12 +206,13 @@ skynet_context_grab(struct skynet_context *ctx) {
 	ATOM_INC(&ctx->ref);
 }
 
+/* 设置保留的 ctx 最后才会被释放 */
 void
 skynet_context_reserve(struct skynet_context *ctx) {
-	skynet_context_grab(ctx);
+	skynet_context_grab(ctx);	// +1 而外界不会针对这次 release，所以 skynet_context_release 不会删除到它
 	// don't count the context reserved, because skynet abort (the worker threads terminate) only when the total context is 0 .
 	// the reserved context will be release at last.
-	context_dec();
+	context_dec();	// 而外界判断系统是否结束是根据 context 数量来判断，它既然3界之外，就不用考虑它的，即它在也可以结束
 }
 
 static void 
@@ -395,17 +396,17 @@ skynet_queryname(struct skynet_context * context, const char * name) {
 	return 0;
 }
 
-/* 退出某个服务 */
+/* 退出 handle 指定的服务 */
 static void
 handle_exit(struct skynet_context * context, uint32_t handle) {
-	if (handle == 0) {
+	if (handle == 0) {	// 退出自己
 		handle = context->handle;
 		skynet_error(context, "KILL self");
 	} else {
 		skynet_error(context, "KILL :%0x", handle);
 	}
 	if (G_NODE.monitor_exit) {
-		// 如果有服务监控service退出，则向其发送消息
+		// 向 monitor 服务发送退出消息
 		skynet_send(context,  handle, G_NODE.monitor_exit, PTYPE_CLIENT, 0, NULL, 0);
 	}
 	skynet_handle_retire(handle);

@@ -66,8 +66,8 @@
 // 发送数据包
 struct write_buffer {
 	struct write_buffer * next;
-	void *buffer;					// 发送缓冲首地址,send完之后删除
-	char *ptr;						// 指向buffer的待发送位置
+	void *buffer;					// 缓冲首地址,send完之后删除
+	char *ptr;						// 缓冲当前位置
 	int sz;							// 剩余待发送的size
 	bool userobject;				// 是否使用用户自定义对象，对于自定义对象，有其特有接口，见socket_object_interface
 	uint8_t udp_address[UDP_ADDRESS_SIZE];
@@ -86,8 +86,8 @@ struct socket {
 	uintptr_t opaque;	// context handle，start_socket中可能改变，重定向收发服务
 	struct wb_list high;// 高优先级发送队列
 	struct wb_list low;	// 低优先级发送队列
-	int64_t wb_size;	// 将要写入(发送)的字节数
-	uint32_t sending;
+	int64_t wb_size;	// 待发送的总字节数，用于报警
+	uint32_t sending;	// 高16位为 socketid, 低16位为待发送buffer 数量
 	int fd;				// io文件描述符，可以是套接字描述符，也可以是stdin
 	int id;				// socket id
 	uint8_t protocol;
@@ -98,10 +98,12 @@ struct socket {
 		int size;			// 接收缓冲大小，在收消息的时候会调整
 		uint8_t udp_address[UDP_ADDRESS_SIZE];	// 默认目地地址
 	} p;
+
+	// direct buffer，它是由各个线程立即发送没有发送发送完的，挂在这里，在 socket 线程中被取出插入到 high list 优先发送
 	struct spinlock dw_lock;
-	int dw_offset;
-	const void * dw_buffer;
-	size_t dw_size;
+	int dw_offset;	// 已经发送的
+	const void * dw_buffer;	// direct buffer
+	size_t dw_size;	// buffer 总长
 };
 
 /*
@@ -318,7 +320,7 @@ reserve_id(struct socket_server *ss) {
 		struct socket *s = &ss->slot[HASH_ID(id)];
 		if (s->type == SOCKET_TYPE_INVALID) {
 			if (ATOM_CAS(&s->type, SOCKET_TYPE_INVALID, SOCKET_TYPE_RESERVE)) {
-				s->id = id;
+				s->id = id;	// id 一直是增长的，虽然到21亿的时候会轮回，但是ss->slot[HASH_ID(id)]->id != id 的可能性很小，就是被复用的时候，但是外界还拿着老的 id 来访问
 				// socket_server_udp_connect may inc s->udpconncting directly (from other thread, before new_fd), 
 				// so reset it to 0 here rather than in new_fd.
 				s->udpconnecting = 0;
@@ -475,7 +477,7 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 
 	s->id = id;
 	s->fd = fd;
-	s->sending = ID_TAG16(id) << 16 | 0;	// TODO: | 0 有什么意义？
+	s->sending = ID_TAG16(id) << 16 | 0;	// 低16位表示待发送 buffer 数目
 	s->protocol = protocol;
 	s->p.size = MIN_READ_BUFFER;
 	s->opaque = opaque;	// 收消息的ctx handle
@@ -567,6 +569,7 @@ _failed:
 	return SOCKET_ERR;
 }
 
+/* 正常发送也是返回 -1，-1 表示 go on */
 static int
 send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, struct socket_lock *l, struct socket_message *result) {
 	while (list->head) {
@@ -593,7 +596,7 @@ send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 		}
 		assert((s->sending & 0xffff) != 0);
 		ATOM_DEC(&s->sending);
-		list->head = tmp->next;
+		list->head = tmp->next;	// 发送下一块缓冲
 		write_buffer_free(ss,tmp);
 	}
 	list->tail = NULL;
@@ -751,6 +754,7 @@ send_buffer_(struct socket_server *ss, struct socket *s, struct socket_lock *l, 
 	return -1;
 }
 
+/* socket 可写的时候调用 */
 static int
 send_buffer(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message *result) {
 	if (!socket_trylock(l))
@@ -918,7 +922,7 @@ _failed:
 
 static inline int
 nomore_sending_data(struct socket *s) {
-	return ((s->sending & 0xffff) == 0) && s->dw_buffer == NULL;
+	return ((s->sending & 0xffff) == 0) && s->dw_buffer == NULL;	// buffer 列表和 direct 都没内容
 }
 
 static int

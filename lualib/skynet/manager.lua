@@ -41,7 +41,7 @@ local function globalname(name, handle)
 	return true
 end
 
--- 给自身注册一个名字
+-- 给自身注册一个本地名字
 function skynet.register(name)
 	if not globalname(name) then
 		c.command("REG", name)

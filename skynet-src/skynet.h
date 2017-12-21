@@ -21,7 +21,7 @@
 #define PTYPE_RESERVED_LUA 10
 #define PTYPE_RESERVED_SNAX 11
 
-#define PTYPE_TAG_DONTCOPY 0x10000
+#define PTYPE_TAG_DONTCOPY 0x10000	// 发给服务的 data 不需要拷贝
 #define PTYPE_TAG_ALLOCSESSION 0x20000
 
 struct skynet_context;
@@ -35,20 +35,20 @@ const char * skynet_command(struct skynet_context * context, const char * cmd , 
 /* 根据一个本地名(.xxxx)或者(:12345678)得到此服务的handle */
 uint32_t skynet_queryname(struct skynet_context * context, const char * name);
 
-/* 向某个服务发送一条消息，返回session */
+/* 向指定地址(destination)的服务发送一条消息，返回session，如果destintion为0，则仅仅获得一个新的session */
 int skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * msg, size_t sz);
 
-/* 向指定名字的服务发送一条消息，可以是其它节点的服务 */
+/* 向指定名字(destination)的服务发送一条消息，可以是其它节点的服务 */
 int skynet_sendname(struct skynet_context * context, uint32_t source, const char * destination , int type, int session, void * msg, size_t sz);
 
-/* 判断handle是否是其它节点的服务句柄 */
+/* 判断handle是否是其它节点的服务句柄，并得到目标节点id(harbor) */
 int skynet_isremote(struct skynet_context *, uint32_t handle, int * harbor);
 
 /* 设置消息处理的回调函数，回调函数返回0表明系统在回调完成之后接收方会free这个msg */
 typedef int (*skynet_cb)(struct skynet_context * context, void *ud, int type, int session, uint32_t source , const void * msg, size_t sz);
 void skynet_callback(struct skynet_context * context, void *ud, skynet_cb cb);
 
-/* 当前线程正在处理的服务句柄 */
+/* 获得当前线程正在处理的服务句柄 */
 uint32_t skynet_current_handle(void);
 
 /* 自从1970.01.01到现在的时间，centisecond */

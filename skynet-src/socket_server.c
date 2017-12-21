@@ -957,6 +957,7 @@ close_socket(struct socket_server *ss, struct request_close *request, struct soc
 	return -1;
 }
 
+/* 监听某个 fd */
 static int
 bind_socket(struct socket_server *ss, struct request_bind *request, struct socket_message *result) {
 	int id = request->id;
@@ -1353,7 +1354,7 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 	}
 }
 
-// return type
+// return type, more 表示上次收集的事件是否还有剩余
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
 	for (;;) {
@@ -1392,7 +1393,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		}
 		struct socket_lock l;
 		socket_lock_init(s, &l);
-		switch (s->type) {
+		switch (s->type) {	// 状态
 		case SOCKET_TYPE_CONNECTING:
 			// 有事件到达(可写事件)，说明连接成功
 			return report_connect(ss, s, &l, result);

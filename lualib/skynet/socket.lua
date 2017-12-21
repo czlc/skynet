@@ -218,7 +218,7 @@ function socket.bind(os_fd)
 	return connect(id)
 end
 
--- 监听stdin
+-- 监听stdin，返回对应的 socket id
 function socket.stdin()
 	return socket.bind(0)
 end

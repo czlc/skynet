@@ -72,6 +72,7 @@ forward_message(int type, bool padding, struct socket_message * result) {
 	}
 }
 
+/* return -1£¨±Ì ægo on */
 int 
 skynet_socket_poll() {
 	struct socket_server *ss = SOCKET_SERVER;

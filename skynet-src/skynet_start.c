@@ -209,6 +209,7 @@ start(int thread) {
 	create_thread(&pid[1], thread_timer, m);
 	create_thread(&pid[2], thread_socket, m);
 
+	/* -1 的表示只处理ctx的一条消息就让出，它可以快速响应不同的ctx,其余的为消息数量 n >> weight，值越小越专一 */
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 

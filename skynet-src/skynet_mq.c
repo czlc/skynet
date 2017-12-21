@@ -66,7 +66,7 @@ skynet_globalmq_push(struct message_queue * queue) {
 	SPIN_UNLOCK(q)
 }
 
-/* 从全局队列中弹出第一个消息队列 */
+/* 从全局队列中弹出第一个消息队列，这样的话每个消息队列(ctx)，只能被一个线程处理 */
 struct message_queue * 
 skynet_globalmq_pop() {
 	struct global_queue *q = Q;

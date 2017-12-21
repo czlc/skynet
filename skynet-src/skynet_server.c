@@ -46,9 +46,9 @@ struct skynet_context {
 	void * cb_ud;					// 回调函数参数，它将作为回调函数的第二个参数，本ctx是第一个参数
 	skynet_cb cb;					// 消息处理函数
 	struct message_queue *queue;	// 本服务的消息队列
-	FILE * logfile;					// 日志开关, 服务的日志文件，在cmd_logon中被设置
-	uint64_t cpu_cost;	// in microsec
-	uint64_t cpu_start;	// in microsec
+	FILE * logfile;					// 日志开关, 服务的日志文件，在cmd_logon中被设置，它的特殊在于可以由别的服务来开启或者关闭
+	uint64_t cpu_cost;				// in microsec，总消耗时间
+	uint64_t cpu_start;				// in microsec, 处理当前消息的开始时间
 	char result[32];				// 用于临时存cmd的返回字符串
 	uint32_t handle;				// 服务的句柄
 	int session_id;					// session id gen，session是各个服务独立的
@@ -746,7 +746,7 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 int
 skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * data, size_t sz) {
 	if ((sz & MESSAGE_TYPE_MASK) != sz) {
-		// 高8位是用于type
+		// sz 高8位等会用于设置 type，所以需要空出来
 		skynet_error(context, "The message to %x is too large", destination);
 		if (type & PTYPE_TAG_DONTCOPY) {
 			// 发不出去，接收方没机会释放它，而PTYPE_TAG_DONTCOPY标识的发送方也不会主动释放，所以在这里释放掉
@@ -756,6 +756,7 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 	}
 	_filter_args(context, type, &session, (void **)&data, &sz);
 
+	// 没有伪装发送对象，那就是自己了
 	if (source == 0) {
 		source = context->handle;
 	}

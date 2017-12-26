@@ -1,7 +1,7 @@
 local skynet = require "skynet"
 local c = require "skynet.core"
 
--- 启动一个 C 服务
+-- 启动一个 C 服务, 返回字符串句柄
 function skynet.launch(...)
 	local addr = c.command("LAUNCH", table.concat({...}," "))
 	if addr then
@@ -41,14 +41,14 @@ local function globalname(name, handle)
 	return true
 end
 
--- 给自身注册一个本地名字
+-- 给当前服务起一个字符串名
 function skynet.register(name)
 	if not globalname(name) then
 		c.command("REG", name)
 	end
 end
 
--- 为一个服务命名
+-- 为 address 指定的服务起一个名字
 function skynet.name(name, handle)
 	if not globalname(name, handle) then
 		c.command("NAME", name .. " " .. skynet.address(handle))
@@ -60,7 +60,7 @@ local dispatch_message = skynet.dispatch_message
 -- 将本服务实现为消息转发器，对一类消息进行转发。
 function skynet.forward_type(map, start_func)
 	c.callback(function(ptype, msg, sz, ...)
-		local prototype = map[ptype]
+		local prototype = map[ptype]	-- 类型转换
 		if prototype then
 			dispatch_message(prototype, msg, sz, ...)
 			-- 需要转发，见clusterproxy最下面skynet.pack("req", node, address, msg, sz)，所以就不需要删除
@@ -87,7 +87,7 @@ function skynet.filter(f ,start_func)
 	end)
 end
 
--- 给当前 skynet 进程设置一个全局的服务监控。
+-- 给当前 skynet 进程设置一个结点全局的服务监控。
 function skynet.monitor(service, query)
 	local monitor
 	if query then

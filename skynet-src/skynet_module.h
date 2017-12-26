@@ -20,6 +20,7 @@ struct skynet_module {
 void skynet_module_insert(struct skynet_module *mod);
 struct skynet_module * skynet_module_query(const char * name);
 void * skynet_module_instance_create(struct skynet_module *);
+/* 初始化服务， 返回 0 表示成功 */
 int skynet_module_instance_init(struct skynet_module *, void * inst, struct skynet_context *ctx, const char * parm);
 void skynet_module_instance_release(struct skynet_module *, void *inst);
 void skynet_module_instance_signal(struct skynet_module *, void *inst, int signal);

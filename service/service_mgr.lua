@@ -1,3 +1,4 @@
+-- 用于管理全局服务, 跨多个节点
 local skynet = require "skynet"
 require "skynet.manager"	-- import skynet.register
 local snax = require "skynet.snax"

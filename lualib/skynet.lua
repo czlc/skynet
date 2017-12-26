@@ -372,10 +372,12 @@ function skynet.exit()
 	coroutine_yield "QUIT"
 end
 
+-- 返回当前进程内注册表项的值
 function skynet.getenv(key)
 	return (c.command("GETENV",key))
 end
 
+-- 向当前进程内注册表添加一项(不可以重置已有配置项）。
 function skynet.setenv(key, value)
 	assert(c.command("GETENV",key) == nil, "Can't setenv exist key : " .. key)
 	c.command("SETENV",key .. " " ..value)
@@ -502,12 +504,14 @@ local function unknown_request(session, address, msg, sz, prototype)
 	error(string.format("Unknown session : %d from %x", session, address))
 end
 
+-- 为无法处理的消息类型设定一个处理函数
 function skynet.dispatch_unknown_request(unknown)
 	local prev = unknown_request
 	unknown_request = unknown
 	return prev
 end
 
+-- 为无法处理的回应消息设定一个处理函数
 local function unknown_response(session, address, msg, sz)
 	skynet.error(string.format("Response message : %s" , c.tostring(msg,sz)))
 	error(string.format("Unknown session : %d from %x", session, address))
@@ -602,7 +606,8 @@ function skynet.dispatch_message(...)
 end
 
 --[[
-用于启动一个新的 Lua 服务。name 是脚本的名字（不用写 .lua 后缀）。
+[DESC]
+	启动一个名为 name 的 Lua 服务。name 也是服务脚本的名字（不用写 .lua 后缀）。
 只有被启动的脚本的 start 函数返回后，这个 API 才会返回启动的服务的地址，这是一个阻塞 API 。
 
 A服务通过launcher服务启动B服务，launcher服务开启服务B后保存一个延迟确认的闭包response；B启
@@ -613,8 +618,16 @@ A服务通过launcher服务启动B服务，launcher服务开启服务B后保存一个延迟确认的闭包res
 的参数都是字符串，且字符串中不可以有空格（否则会被分割成多个参数）。这种参数传递方式是历史遗留
 下来的，有很多潜在的问题。目前推荐的惯例是，让你的服务响应一个启动消息。在 newservice 之后，立
 刻调用 skynet.call 发送启动请求。
+
+[RETURN]
+	handle
+
+[ERROR]
+	可能会抛异常，所以要用 pcall 来调用
+
+[BLOCK]
+	YES
 ]]
--- 阻塞函数
 function skynet.newservice(name, ...)
 	return skynet.call(".launcher", "lua" , "LAUNCH", "snlua", name, ...)
 end
@@ -694,7 +707,7 @@ local init_func = {}
 -- 行(可以正确的挂起)
 function skynet.init(f, name)
 	assert(type(f) == "function")
-	if init_func == nil then
+	if init_func == nil then	-- 已经过了初始化过程
 		f()
 	else
 		table.insert(init_func, f)
@@ -745,6 +758,9 @@ end
 -- 注册一个启动函数
 function skynet.start(start_func)
 	c.callback(skynet.dispatch_message)	-- 设置消息分发函数
+	-- 通常在加载服务源文件的时候调用此函数，这个阶段不可以调用任何有可
+	-- 能阻塞住该服务的 skynet api 。因为，在这个阶段中，和服务配套的 
+	-- skynet 设置并没有初始化完毕。
 	skynet.timeout(0, function()
 		skynet.init_service(start_func)
 	end)
@@ -780,6 +796,7 @@ function skynet.term(service)
 	return _error_dispatch(0, service)
 end
 
+-- 设定当前服务最多可以使用多少字节的内存，该函数必须先于 start 函数调用。
 function skynet.memlimit(bytes)
 	debug.getregistry().memlimit = bytes
 	skynet.memlimit = nil	-- set only once

@@ -75,7 +75,7 @@ function command.REMOVE(_, handle, kill)
 end
 
 local function launch_service(service, ...)
-	local param = table.concat({...}, " ")
+	local param = table.concat({...}, " ")	-- 限制了启动参数只能是字符串和数字
 	local inst = skynet.launch(service, param)
 	local response = skynet.response()
 	if inst then
@@ -90,7 +90,7 @@ end
 
 function command.LAUNCH(_, service, ...)
 	launch_service(service, ...)
-	return NORET -- 暂时不返回给调用者
+	return NORET -- 暂时不返回给调用者，待 start 传入的启动函数执行完成后才返回，见 skynet.init_service
 end
 
 function command.LOGLAUNCH(_, service, ...)
@@ -131,7 +131,7 @@ skynet.register_protocol {
 	id = skynet.PTYPE_TEXT,
 	unpack = skynet.tostring,
 	dispatch = function(session, address , cmd)
-		if cmd == "" then
+		if cmd == "" then	-- C 服务需要返回这个来表示启动成功
 			command.LAUNCHOK(address)
 		elseif cmd == "ERROR" then
 			command.ERROR(address)

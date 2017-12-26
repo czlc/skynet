@@ -534,7 +534,7 @@ cmd_getenv(struct skynet_context * context, const char * param) {
 	return skynet_getenv(param);
 }
 
-/* 设置全局配置项 */
+/* 设置全局(当前进程)配置项 */
 static const char *
 cmd_setenv(struct skynet_context * context, const char * param) {
 	size_t sz = strlen(param);

@@ -37,7 +37,7 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 	int top = lua_gettop(L);
 	if (top == 0) {
 		lua_pushcfunction(L, traceback);
-		lua_rawgetp(L, LUA_REGISTRYINDEX, _cb);
+		lua_rawgetp(L, LUA_REGISTRYINDEX, _cb);	// 取得之前设置的 lua 回调函数
 	} else {
 		assert(top == 2);
 	}
@@ -82,13 +82,14 @@ forward_cb(struct skynet_context * context, void * ud, int type, int session, ui
 	return 1;
 }
 
+// 设置服务的回调函数
 static int
 lcallback(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	int forward = lua_toboolean(L, 2);
 	luaL_checktype(L,1,LUA_TFUNCTION);
 	lua_settop(L,1);
-	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);
+	lua_rawsetp(L, LUA_REGISTRYINDEX, _cb);	// 以 _cb 为索引，保存相关 lua function
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
 	lua_State *gL = lua_tothread(L,-1);
@@ -157,6 +158,7 @@ lintcommand(lua_State *L) {
 	return 0;
 }
 
+/* 生成唯一 session */
 static int
 lgenid(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));

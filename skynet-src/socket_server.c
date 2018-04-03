@@ -49,6 +49,7 @@
 #define PROTOCOL_TCP 0
 #define PROTOCOL_UDP 1
 #define PROTOCOL_UDPv6 2
+#define PROTOCOL_UNKNOWN 255
 
 #define UDP_ADDRESS_SIZE 19	// ipv6 128bit + port 16bit + 1 byte type
 
@@ -87,7 +88,7 @@ struct socket {
 	struct wb_list high;// 高优先级发送队列
 	struct wb_list low;	// 低优先级发送队列
 	int64_t wb_size;	// 待发送的总字节数，用于报警
-	uint32_t sending;	// 高16位为 socketid, 低16位为待发送buffer 数量
+	volatile uint32_t sending;	// 高16位为 socketid, 低16位为待发送buffer 数量
 	int fd;				// io文件描述符，可以是套接字描述符，也可以是stdin
 	int id;				// socket id
 	uint8_t protocol;
@@ -321,6 +322,7 @@ reserve_id(struct socket_server *ss) {
 		if (s->type == SOCKET_TYPE_INVALID) {
 			if (ATOM_CAS(&s->type, SOCKET_TYPE_INVALID, SOCKET_TYPE_RESERVE)) {
 				s->id = id;	// id 一直是增长的，虽然到21亿的时候会轮回，但是ss->slot[HASH_ID(id)]->id != id 的可能性很小，就是被复用的时候，但是外界还拿着老的 id 来访问
+				s->protocol = PROTOCOL_UNKNOWN;
 				// socket_server_udp_connect may inc s->udpconncting directly (from other thread, before new_fd), 
 				// so reset it to 0 here rather than in new_fd.
 				s->udpconnecting = 0;
@@ -594,8 +596,6 @@ send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 			}
 			break;
 		}
-		assert((s->sending & 0xffff) != 0);
-		ATOM_DEC(&s->sending);
 		list->head = tmp->next;	// 发送下一块缓冲
 		write_buffer_free(ss,tmp);
 	}
@@ -776,8 +776,6 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_lock *l, s
 			s->high.head = buf;
 		}
 		s->dw_buffer = NULL;
-		// socket locked. Don't need use 'add_sending_ref', just ATOM_INC is ok.
-		ATOM_INC(&s->sending);
 	}
 	int r = send_buffer_(ss,s,l,result);
 	socket_unlock(l);
@@ -922,7 +920,7 @@ _failed:
 
 static inline int
 nomore_sending_data(struct socket *s) {
-	return ((s->sending & 0xffff) == 0) && s->dw_buffer == NULL;	// buffer 列表和 direct 都没内容
+	return send_buffer_empty(s) && s->dw_buffer == NULL && (s->sending & 0xffff) == 0;	// buffer 列表和 direct 都没内容
 }
 
 static int
@@ -1097,6 +1095,39 @@ set_udp_address(struct socket_server *ss, struct request_setudp *request, struct
 	ATOM_DEC(&s->udpconnecting);
 	return -1;
 }
+
+static inline void
+inc_sending_ref(struct socket *s, int id) {
+	if (s->protocol != PROTOCOL_TCP)
+		return;
+	for (;;) {
+		uint32_t sending = s->sending;
+		if ((sending >> 16) == ID_TAG16(id)) {
+			if ((sending & 0xffff) == 0xffff) {
+				// s->sending may overflow (rarely), so busy waiting here for socket thread dec it. see issue #794
+				continue;
+			}
+			// inc sending only matching the same socket id
+			if (ATOM_CAS(&s->sending, sending, sending + 1))
+				return;
+			// atom inc failed, retry
+		} else {
+			// socket id changed, just return
+			return;
+		}
+	}
+}
+
+static inline void
+dec_sending_ref(struct socket_server *ss, int id) {
+	struct socket * s = &ss->slot[HASH_ID(id)];
+	// Notice: udp may inc sending while type == SOCKET_TYPE_RESERVE
+	if (s->id == id && s->protocol == PROTOCOL_TCP) {
+		assert((s->sending & 0xffff) != 0);
+		ATOM_DEC(&s->sending);
+	}
+}
+
 // return type, -1表示不用通知ctx，继续处理
 static int
 ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
@@ -1127,9 +1158,13 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 		result->data = NULL;
 		return SOCKET_EXIT;
 	case 'D':
-		return send_socket(ss, (struct request_send *)buffer, result, PRIORITY_HIGH, NULL);
-	case 'P':
-		return send_socket(ss, (struct request_send *)buffer, result, PRIORITY_LOW, NULL);
+	case 'P': {
+		int priority = (type == 'D') ? PRIORITY_HIGH : PRIORITY_LOW;
+		struct request_send * request = (struct request_send *) buffer;
+		int ret = send_socket(ss, request, result, priority, NULL);
+		dec_sending_ref(ss, request->id);
+		return ret;
+	}
 	case 'A': {
 		struct request_send_udp * rsu = (struct request_send_udp *)buffer;
 		return send_socket(ss, &rsu->send, result, PRIORITY_HIGH, rsu->address);
@@ -1512,25 +1547,6 @@ can_direct_write(struct socket *s, int id) {
 	return s->id == id && nomore_sending_data(s) && s->type == SOCKET_TYPE_CONNECTED && s->udpconnecting == 0;
 }
 
-static inline void
-add_sending_ref(struct socket *s, int id) {
-	if (s->protocol == PROTOCOL_TCP) {
-		// udp don't need order
-		for (;;) {
-			uint32_t sending = s->sending;
-			if ((sending >> 16) == ID_TAG16(id)) {
-				// inc sending only matching the same socket id
-				if (ATOM_CAS(&s->sending, sending, sending + 1))
-					return;
-				// atom inc failed, retry
-			} else {
-				// socket id changed, just return
-				return;
-			}
-		}
-	}
-}
-
 // return -1 when error, 0 when success
 // 如果 sz < 0, buffer 是一个 ud，用于自己控制 buffer 生命期
 int 
@@ -1582,7 +1598,7 @@ socket_server_send(struct socket_server *ss, int id, const void * buffer, int sz
 		socket_unlock(&l);
 	}
 
-	add_sending_ref(s, id);
+	inc_sending_ref(s, id);
 
 	struct request_package request;
 	request.u.send.id = id;
@@ -1602,7 +1618,7 @@ socket_server_send_lowpriority(struct socket_server *ss, int id, const void * bu
 		return -1;
 	}
 
-	add_sending_ref(s, id);
+	inc_sending_ref(s, id);
 
 	struct request_package request;
 	request.u.send.id = id;

@@ -38,13 +38,15 @@ local math = math
 local table = table
 local string = string
 
+-- dump 一个 table，返回 bin value
 function ctd.dump(root)
 	local doc = {
 		table_n = 0,
 		table = {},
-		strings = {},
+		strings = {},	-- 字符串列表 [string] = offset
 		offset = 0,
 	}
+	-- dump 一个 child table，返回 table 在 doc.table 中的索引
 	local function dump_table(t)
 		local index = doc.table_n + 1
 		doc.table_n = index
@@ -53,11 +55,12 @@ function ctd.dump(root)
 		local array = {}
 		local kvs = {}
 		local types = {}
+		-- 编码一个 lua value, 返回 type 和 pack value
 		local function encode(v)
 			local t = type(v)
 			if t == "table" then
 				local index = dump_table(v)
-				return '\4', string.pack("<i4", index-1)
+				return '\4', string.pack("<i4", index-1)	-- base from 0
 			elseif t == "number" then
 				if math.tointeger(v) then
 					return '\1', string.pack("<i4", v)
@@ -83,10 +86,12 @@ function ctd.dump(root)
 				error ("Unsupport value " .. tostring(v))
 			end
 		end
+		-- 数组部分
 		for i,v in ipairs(t) do
 			types[i], array[i] = encode(v)
 			array_n = i
 		end
+		-- hash 部分
 		for k,v in pairs(t) do
 			if type(k) == "string" then
 				local _, kv = encode(k)
@@ -113,14 +118,14 @@ function ctd.dump(root)
 	end
 	dump_table(root)
 	-- encode document
-	local index = {}
+	local index = {}	-- 记录每个 table 的 offset
 	local offset = 0
 	for i, v in ipairs(doc.table) do
 		index[i] = string.pack("<I4", offset)
 		offset = offset + #v
 	end
 	local tmp = {
-		string.pack("<I4", 4 + 4 + 4 * doc.table_n + offset),
+		string.pack("<I4", 4 + 4 + 4 * doc.table_n + offset),	-- 得到 strings 的位置
 		string.pack("<I4", doc.table_n),
 		table.concat(index),
 		table.concat(doc.table),
@@ -130,12 +135,15 @@ function ctd.dump(root)
 	return table.concat(tmp)
 end
 
+-- 解码一个 doc, 返回对应的 table 和 subtable index
 function ctd.undump(v)
 	local stringtbl, n = string.unpack("<I4I4",v)
-	local index = { string.unpack("<" .. string.rep("I4", n), v, 9) }
-	local header = 4 + 4 + 4 * n + 1
+	local index = { string.unpack("<" .. string.rep("I4", n), v, 9) }	-- table index
+	local header = 4 + 4 + 4 * n + 1	-- table content
 	stringtbl = stringtbl + 1
-	local tblidx = {}
+	local tblidx = {}	-- 记录每一个 table 对应的 idx, [table] = idx
+
+	-- 解码一个 subtable, n 是 table 的索引
 	local function decode(n)
 		local toffset = index[n+1] + header
 		local array, dict = string.unpack("<I4I4", v, toffset)
@@ -173,22 +181,24 @@ function ctd.undump(v)
 		tblidx[result] = n
 		return result
 	end
+
 	return decode(0), tblidx
 end
 
+-- 得到新表和老表的映射关系
 local function diffmap(last, current)
 	local lastv, lasti = ctd.undump(last)
 	local curv, curi = ctd.undump(current)
-	local map = {}	-- new(current index):old(last index)
+	local map = {}	-- new(current index):old(last index)，新表和老表项的映射关系
 	local function comp(lastr, curr)
-		local old = lasti[lastr]
-		local new = curi[curr]
+		local old = lasti[lastr]	-- old 是 table(lastr) 的位置
+		local new = curi[curr]		-- new 是 table(curi) 的位置
 		map[new] = old
 		for k,v in pairs(lastr) do
 			if type(v) == "table" then
 				local newv = curr[k]
 				if type(newv) == "table" then
-					comp(v, newv)
+					comp(v, newv)	-- 同层 table 比较
 				end
 			end
 		end
@@ -198,7 +208,7 @@ local function diffmap(last, current)
 end
 
 function ctd.diff(last, current)
-	local map = diffmap(last, current)
+	local map = diffmap(last, current)	-- [new] = old
 	local stringtbl, n = string.unpack("<I4I4",current)
 	local _, lastn = string.unpack("<I4I4",last)
 	local existn = 0
@@ -207,19 +217,20 @@ function ctd.diff(last, current)
 	end
 	local newn = lastn
 	for i = 0, n-1 do
-		if not map[i] then
+		if not map[i] then	-- new 表中没有对应的 old
 			map[i] = newn
 			newn = newn + 1
 		end
 	end
 	-- remap current
-	local index = { string.unpack("<" .. string.rep("I4", n), current, 9) }
+	local index = { string.unpack("<" .. string.rep("I4", n), current, 9) }	-- table offset
 	local header = 4 + 4 + 4 * n + 1
-	local function remap(n)
-		local toffset = index[n+1] + header
+
+	local function remap(n)	-- 获得 table[n] 的数据
+		local toffset = index[n+1] + header	-- 获得 table 数据的偏移量
 		local array, dict = string.unpack("<I4I4", current, toffset)
 		local types = { string.unpack(string.rep("B", (array+dict)), current, toffset + 8) }
-		local hlen = (array + dict + 8 + 3) & ~3
+		local hlen = (array + dict + 8 + 3) & ~3	-- header len (align 4)
 		local hastable = false
 		for _, v in ipairs(types) do
 			if v == 4 then -- table
@@ -245,13 +256,15 @@ function ctd.diff(last, current)
 		end
 		return string.sub(current, toffset, toffset + hlen - 1) ..
 			string.pack(pat, table.unpack(values))
-	end
+	end	-- remap
+
 	-- rebuild
-	local oldindex = { string.unpack("<" .. string.rep("I4", n), current, 9) }
+	local oldindex = { string.unpack("<" .. string.rep("I4", n), current, 9) }	-- old table offset
 	local index = {}
 	for i = 1, newn do
-		index[i] = 0xffffffff
+		index[i] = 0xffffffff	-- offset
 	end
+	-- 填充老表中有的
 	for i = 0, #map do
 		index[map[i]+1] = oldindex[i+1]
 	end

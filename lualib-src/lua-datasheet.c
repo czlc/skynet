@@ -2,9 +2,10 @@
 #include <lauxlib.h>
 #include <stdint.h>
 
-#define NODECACHE "_ctable"
-#define PROXYCACHE "_proxy"
-#define TABLES "_ctables"
+// proxy 用于存 doc 下的 一个 table
+#define NODECACHE "_ctable"	// [t] = table (mode == "kv"), t 是 struct table, table 是 lua table，用于缓存子节点，可以根据 handle 和 index 去找对应的 lua table
+#define PROXYCACHE "_proxy"	// [table] = proxy (mode = "k"), table 是 lua table, proxy 是对应的 userdata，可以根据 lua table 去找对应的 handle 和 index
+#define TABLES "_ctables"	// [data] = handle, data 和 handle 是一回事
 
 #define VALUE_NIL 0
 #define VALUE_INTEGER 1
@@ -45,24 +46,33 @@ gettable(const struct document *doc, int index) {
 	return (const struct table *)((const char *)doc + sizeof(uint32_t) + sizeof(uint32_t) + doc->n * sizeof(uint32_t) + doc->index[index]);
 }
 
+// data, TABLES
+// data 是 doc
+// index 是 table index
 static void
 create_proxy(lua_State *L, const void *data, int index) {
 	const struct table * t = gettable(data, index);
 	if (t == NULL) {
 		luaL_error(L, "Invalid index %d", index);
 	}
-	lua_getfield(L, LUA_REGISTRYINDEX, NODECACHE);
-	if (lua_rawgetp(L, -1, t) == LUA_TTABLE) {
-		lua_replace(L, -2);
+	lua_getfield(L, LUA_REGISTRYINDEX, NODECACHE);	/* NODECACHE */
+	if (lua_rawgetp(L, -1, t) == LUA_TTABLE) {	/* NODECACHE, NODECACHE[t] */
+		lua_replace(L, -2);	/* NODECACHE[t] */
 		return;
 	}
-	lua_pop(L, 1);
-	lua_newtable(L);
-	lua_pushvalue(L, lua_upvalueindex(1));
-	lua_setmetatable(L, -2);
+	lua_pop(L, 1);	// NODECACHE
+	
+	// 设置将要返回的 table
+	lua_newtable(L);	// NODECACHE, table
+	lua_pushvalue(L, lua_upvalueindex(1));	// NODECACHE, table, mt
+	lua_setmetatable(L, -2);	// NODECACHE, table
+
+	// 设置 NODECACHE[t] = table，这样可以通过 doc + index 获得 table
 	lua_pushvalue(L, -1);
 	// NODECACHE, table, table
-	lua_rawsetp(L, -3, t);
+	lua_rawsetp(L, -3, t);	// NODECACHE[t] = table
+
+	// 设置 PROXYCACHE[table] = proxy, 这样可以通过 table 获得 doc + index
 	// NODECACHE, table
 	lua_getfield(L, LUA_REGISTRYINDEX, PROXYCACHE);
 	// NODECACHE, table, PROXYCACHE
@@ -72,7 +82,7 @@ create_proxy(lua_State *L, const void *data, int index) {
 	// NODECACHE, table, PROXYCACHE, table, proxy
 	p->data = data;
 	p->index = index;
-	lua_rawset(L, -3);
+	lua_rawset(L, -3);	// PROXYCACHE[table] = proxy
 	// NODECACHE, table, PROXYCACHE
 	lua_pop(L, 1);
 	// NODECACHE, table
@@ -98,22 +108,26 @@ clear_table(lua_State *L) {
 	}
 }
 
+/* 把 vm 中的 cache 清空，下次访问任何一个子表时，重新从 C 数据块展开数据即可 */
+// data 是老 doc, newdata 是新的匹配过的 doc
 static void
 update_cache(lua_State *L, const void *data, const void * newdata) {
-	lua_getfield(L, LUA_REGISTRYINDEX, NODECACHE);
-	int t = lua_gettop(L);
-	lua_getfield(L, LUA_REGISTRYINDEX, PROXYCACHE);
-	int pt = t + 1;
-	lua_newtable(L);	// temp table
-	int nt = pt + 1;
+	lua_getfield(L, LUA_REGISTRYINDEX, NODECACHE);	// NODECACHE
+	int t = lua_gettop(L);	// NODECACHE
+	lua_getfield(L, LUA_REGISTRYINDEX, PROXYCACHE);	// NODECACHE, PROXYCACHE
+	int pt = t + 1;	// PROXYCACHE
+	lua_newtable(L);	// NODECACHE, PROXYCACHE, table
+	int nt = pt + 1;	// nt
+
+	// 遍历 NODECACHE
 	lua_pushnil(L);
 	while (lua_next(L, t) != 0) {
 		// pointer (-2) -> table (-1)
-		lua_pushvalue(L, -1);
-		if (lua_rawget(L, pt) == LUA_TUSERDATA) {
+		lua_pushvalue(L, -1);	// struct table, table, table
+		if (lua_rawget(L, pt) == LUA_TUSERDATA) {	// struct table, table, proxy
 			// pointer, table, proxy
 			struct proxy * p = lua_touserdata(L, -1);
-			if (p->data == data) {
+			if (p->data == data) {	// 找到此 doc 的 proxy
 				// update to newdata
 				p->data = newdata;
 				const struct table * newt = gettable(newdata, p->index);
@@ -124,8 +138,8 @@ update_cache(lua_State *L, const void *data, const void * newdata) {
 				// pointer, table, meta
 				lua_setmetatable(L, -2);
 				// pointer, table
-				if (newt) {
-					lua_rawsetp(L, nt, newt);
+				if (newt) {	// new 有对应的
+					lua_rawsetp(L, nt, newt);	// [newt] = table
 				} else {
 					lua_pop(L, 1);
 				}
@@ -153,12 +167,13 @@ update_cache(lua_State *L, const void *data, const void * newdata) {
 	lua_pop(L, 3);
 }
 
+// table, handle
 static int
 lupdate(lua_State *L) {
 	lua_getfield(L, LUA_REGISTRYINDEX, PROXYCACHE);
 	lua_pushvalue(L, 1);
-	// PROXYCACHE, table
-	if (lua_rawget(L, -2) != LUA_TUSERDATA) {
+	// table, handle, PROXYCACHE, table
+	if (lua_rawget(L, -2) != LUA_TUSERDATA) {	// table, handle, PROXYCACHE, proxy
 		luaL_error(L, "Invalid proxy table %p", lua_topointer(L, 1));
 	}
 	struct proxy * p = lua_touserdata(L, -1);
@@ -226,6 +241,8 @@ pushvalue(lua_State *L, const void *v, int type, const struct document * doc) {
 	}
 }
 
+// tbl 是 table 所在的栈索引
+// 解一层 table data 到 table 中来
 static void
 copytable(lua_State *L, int tbl, struct proxy *p) {
 	const struct document * doc = (const struct document *)p->data; 
@@ -249,14 +266,18 @@ copytable(lua_State *L, int tbl, struct proxy *p) {
 	}
 }
 
+/*
+	stack: handle
+	根据 handle 创建一个 table，这个 table 挂接了 metatable
+*/
 static int
 lnew(lua_State *L) {
 	luaL_checktype(L, 1, LUA_TLIGHTUSERDATA);
-	const char * data = lua_touserdata(L, 1);
+	const char * data = lua_touserdata(L, 1);	/* data */
 	// hold ref to data
-	lua_getfield(L, LUA_REGISTRYINDEX, TABLES);
-	lua_pushvalue(L, 1);
-	lua_rawsetp(L, -2, data);
+	lua_getfield(L, LUA_REGISTRYINDEX, TABLES);	/* data, TABLES */
+	lua_pushvalue(L, 1);	/* data, TABLES, handle */
+	lua_rawsetp(L, -2, data);	/* data, TABLES */
 
 	create_proxy(L, data, 0);
 	return 1;
@@ -267,14 +288,14 @@ copyfromdata(lua_State *L) {
 	lua_getfield(L, LUA_REGISTRYINDEX, PROXYCACHE);
 	lua_pushvalue(L, 1);
 	// PROXYCACHE, table
-	if (lua_rawget(L, -2) != LUA_TUSERDATA) {
+	if (lua_rawget(L, -2) != LUA_TUSERDATA) {	// PROXYCACHE, proxy
 		luaL_error(L, "Invalid proxy table %p", lua_topointer(L, 1));
 	}
 	struct proxy * p = lua_touserdata(L, -1);
 	lua_pop(L, 2);
 	copytable(L, 1, p);
 	lua_pushnil(L);
-	lua_setmetatable(L, 1);	// remove metatable
+	lua_setmetatable(L, 1);	// remove metatable，这一层已经解开，不再需要 metatable 了
 }
 
 static int
@@ -323,6 +344,7 @@ new_weak_table(lua_State *L, const char *mode) {
 	lua_setmetatable(L, -2);	// make NODECACHE weak
 }
 
+/* 创建一个用于 table 的 metatable */
 static void
 gen_metatable(lua_State *L) {
 	new_weak_table(L, "kv");	// NODECACHE { pointer:table }
@@ -334,7 +356,7 @@ gen_metatable(lua_State *L) {
 	lua_newtable(L);
 	lua_setfield(L, LUA_REGISTRYINDEX, TABLES);
 
-	lua_createtable(L, 0, 1);	// mod table
+	lua_createtable(L, 0, 1);	// mod table, ???
 
 	lua_createtable(L, 0, 2);	// metatable
 	luaL_Reg l[] = {
@@ -343,8 +365,8 @@ gen_metatable(lua_State *L) {
 		{ "__len", llen },
 		{ NULL, NULL },
 	};
-	lua_pushvalue(L, -1);
-	luaL_setfuncs(L, l, 1);
+	lua_pushvalue(L, -1);	// metatable, metatable(upvalue)
+	luaL_setfuncs(L, l, 1);	// metatable
 }
 
 static int
@@ -363,9 +385,9 @@ luaopen_skynet_datasheet_core(lua_State *L) {
 		{ NULL, NULL },
 	};
 
-	luaL_newlibtable(L,l);
-	gen_metatable(L);
-	luaL_setfuncs(L, l, 1);
+	luaL_newlibtable(L,l);	// tb
+	gen_metatable(L);	// tb, metatable(upvalue)
+	luaL_setfuncs(L, l, 1);	// tb
 	lua_pushcfunction(L, lstringpointer);
 	lua_setfield(L, -2, "stringpointer");
 	return 1;

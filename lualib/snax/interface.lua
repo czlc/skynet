@@ -1,5 +1,6 @@
 local skynet = require "skynet"
 
+-- 加载指定 name 的脚本
 local function dft_loader(path, name, G)
     local errlist = {}
 
@@ -16,12 +17,12 @@ local function dft_loader(path, name, G)
     error(table.concat(errlist, "\n"))
 end
 
-return function (name , G, loader)
+return function (name, G, loader)
        loader = loader or dft_loader
        local mainfunc
 
 	-- 返回一个table，向这个table添加函数的时候会将加入的函数转而
-	-- 添加进传入的func 表
+	-- 添加进传入的 func 表
 	local function func_id(id, group)
 		local tmp = {}
 		local function count( _, name, func)
@@ -59,20 +60,20 @@ return function (name , G, loader)
 	do
 		for k, v in ipairs(system) do
 			system[v] = k
-			func[k] = { k , "system", v }
+			func[k] = { k , "system", v }	-- func[1] = {1, "system", "init" }
 		end
 	end
 
-	-- 之后向env.accept添加的元素将加入到func[idx] = {#func + 1, "accept", fname, f}
+	-- 之后向env.accept 赋值 将加入到 func[idx] = {#func + 1, "accept", fname, f}
 	env.accept = func_id(func, "accept")
-	-- 之后向env.response添加的元素将加入到func[idx] = {#func + 1, "response", fname, f}
+	-- 之后向env.response 赋值 将加入到func[idx] = {#func + 1, "response", fname, f}
 	env.response = func_id(func, "response")
 
 	-- 之后向G添加东西，将会加入到func[]
 	local function init_system(t, name, f)
 		local index = system[name] -- id
 		if index then
-			-- 是系统函数:"init"、"exit"、"hotfix"之一
+			-- 是系统函数:"init"、"exit"、"hotfix", "profile" 之一
 			if type(f) ~= "function" then
 				error (string.format("%s must be a function", name))
 			end
@@ -84,8 +85,8 @@ return function (name , G, loader)
 
 	local pattern
 
-        local path = assert(skynet.getenv "snax" , "please set snax in config file")
-        mainfunc, pattern = loader(path, name, G)
+	local path = assert(skynet.getenv "snax" , "please set snax in config file")
+	mainfunc, pattern = loader(path, name, G)
 
 	setmetatable(G,	{ __index = env , __newindex = init_system })
 	local ok, err = xpcall(mainfunc, debug.traceback)	-- 这个时候之前load设置的__newindex，包括system和response、accept都会生效

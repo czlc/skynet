@@ -14,7 +14,7 @@ struct skynet_module {
 	skynet_dl_create create;
 	skynet_dl_init init;
 	skynet_dl_release release;
-	skynet_dl_signal signal;
+	skynet_dl_signal signal;	/* 信号处理函数，处理本服务收到的 signal */
 };
 
 void skynet_module_insert(struct skynet_module *mod);

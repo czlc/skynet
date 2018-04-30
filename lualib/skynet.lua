@@ -772,6 +772,7 @@ function skynet.stat(what)
 	return c.intcommand("STAT", what)
 end
 
+-- 用于 debug，查看等待对方回应的请求的 traceback
 function skynet.task(ret)
 	local t = 0
 	for session,co in pairs(session_id_coroutine) do

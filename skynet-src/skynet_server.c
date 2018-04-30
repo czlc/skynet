@@ -660,7 +660,7 @@ cmd_logoff(struct skynet_context * context, const char * param) {
 	return NULL;
 }
 
-/* 给param对应的服务发送指定信号，限制于本节点 */
+/* 给 param 对应的服务发送指定信号，限制于本节点 */
 static const char *
 cmd_signal(struct skynet_context * context, const char * param) {
 	uint32_t handle = tohandle(context, param);

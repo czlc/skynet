@@ -61,7 +61,7 @@ logger_init(struct logger * inst, struct skynet_context *ctx, const char * parm)
 		strcpy(inst->filename, parm);
 		inst->close = 1;
 	} else {
-		inst->handle = stdout;
+		inst->handle = stdout;	// 默认输出到标准输出
 	}
 	if (inst->handle) {
 		skynet_callback(ctx, inst, logger_cb);

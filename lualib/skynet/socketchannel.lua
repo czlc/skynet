@@ -7,7 +7,7 @@ local socketdriver = require "skynet.socketdriver"
 
 local socket_channel = {}
 local channel = {}
-local channel_socket = {}
+local channel_socket = {}	-- [1] 是 socket id
 local channel_meta = { __index = channel }
 local channel_socket_meta = {
 	__index = channel_socket,
@@ -26,11 +26,11 @@ socket_channel.error = socket_error
 -- 创建一个 channel 对象
 function socket_channel.channel(desc)
 	local c = {
-		__host = assert(desc.host),		-- 主机名
-		__port = assert(desc.port),		-- 端口
+		__host = assert(desc.host),
+		__port = assert(desc.port),
 		__backup = desc.backup,			-- 备用地址列表
-		__auth = desc.auth,				-- 验证函数
-		__response = desc.response,		-- It's for session mode，函数用于接收并处理请求结果，对于session mode来说，返回的session需要此函数才能得到，Q:liuchang 因此需要统一成一个函数，而不是一个请求一个回调？
+		__auth = desc.auth,
+		__response = desc.response,		-- It's for session mode, 用于处理 mongodb 的返回结果，返回处理结果和相应 session 供后续处理
 		__request = {},					-- [i] = response，用于order模式，表明回应回调函数队列
 		__thread = {},					-- [sesion/i] = co，用于session/order模式，表明请求对应的挂起协程，用于数据到达的时候唤醒
 		__result = {},					-- [co] = result，用于session/order模式，表明协程处理结果是否异常
@@ -89,6 +89,7 @@ local function exit_thread(self)
 	end
 end
 
+-- 开启一个线程来处理 server 返回的结果
 local function dispatch_by_session(self)
 	local response = self.__response
 	-- response() return session
@@ -103,11 +104,14 @@ local function dispatch_by_session(self)
 					self.__result_data[co] = result
 					table.insert(result, result_data)
 				else
+					-- 收集完成，唤醒消费者
 					self.__thread[session] = nil
 					self.__result[co] = result_ok
 					if result_ok and self.__result_data[co] then
+						-- 正确处理
 						table.insert(self.__result_data[co], result_data)
 					else
+						-- 出现异常
 						self.__result_data[co] = result_data
 					end
 					skynet.wakeup(co)
@@ -139,8 +143,8 @@ local function pop_response(self)
 	end
 end
 
--- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
---			对于session类型来说是session，根据session来找到原请求
+-- response 对于order mode 类型来说是应答 callback，一个请求顺序对应一个应答
+--			对于session 类型来说是 session，根据 session 来找到原请求
 local function push_response(self, response, co)
 	if self.__response then
 		-- response is session
@@ -149,7 +153,7 @@ local function push_response(self, response, co)
 		-- response is a function, push it to __request
 		table.insert(self.__request, response)
 		table.insert(self.__thread, co)
-		if self.__wait_response then
+		if self.__wait_response then	-- 等待回应处理函数
 			skynet.wakeup(self.__wait_response)
 			self.__wait_response = nil
 		end
@@ -175,6 +179,7 @@ local function get_response(func, sock)
 	end
 end
 
+-- 开启一个线程来处理 server 返回的结果，另外一个是 dispatch_by_session
 local function dispatch_by_order(self)
 	while self.__sock do
 		local func, co = pop_response(self)
@@ -411,9 +416,10 @@ local function sock_err(self)
 end
 
 -- request 为请求内容
+-- response 是一个 function ，用来收取回应包
 -- response 对于order mode 类型来说是应答callback，一个请求顺序对应一个应答
 --			对于session类型来说是session，根据session来找到原请求
--- 阻塞函数，但是可以在不同的协程同时调用
+-- 阻塞函数，请求并等待回应
 function channel:request(request, response, padding)
 	assert(block_connect(self, true))	-- connect once
 	local fd = self.__sock[1]
@@ -441,9 +447,18 @@ function channel:request(request, response, padding)
 		return
 	end
 
+	-- 阻塞等待回应
 	return wait_for_response(self, response)
 end
 
+-- 用来单向接收一个包
+--[[
+	channel:request(req)
+	local resp = channel:response(dispatch)
+
+	-- 等价于
+	local resp = channel:request(req, dispatch)
+]]
 function channel:response(response)
 	assert(block_connect(self))
 
@@ -480,7 +495,7 @@ channel_meta.__gc = channel.close
 
 local function wrapper_socket_function(f)
 	return function(self, ...)
-		local result = f(self[1], ...)
+		local result = f(self[1], ...)	-- self[1] 是 socket id
 		if not result then
 			error(socket_error)
 		else
